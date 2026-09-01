@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SAARTHI LITE | Minimalist Holographic AI Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="lite.css">
+</head>
+<body>
+  <div class="app-background">
+    <div class="ambient-glow" id="ambientGlow"></div>
+    <div class="hologram-grid-overlay"></div>
+  </div>
+
+  <div class="lite-container">
+    <!-- TOP MINIMAL NAVIGATION BAR -->
+    <header class="lite-header">
+      <div class="brand-group">
+        <div class="brand-symbol">🌿</div>
+        <div>
+          <h1 class="brand-title">SAARTHI <span class="badge-lite">LITE AI</span></h1>
+          <span class="brand-sub">Ultra-Efficient Holographic Agronomy Generator</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Mode Switcher Badge -->
+        <div class="mode-indicator" id="modeIndicator">
+          <span class="mode-dot helpful"></span>
+          <span class="mode-text" id="modeText">HELPFUL MODE</span>
+        </div>
+        <a href="index.html" class="btn-switch-3d" title="Switch to Full 3D Digital Twin HUD">
+          <span>🔮 3D HUD Mode</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- MAIN INTERACTIVE GENERATOR STAGE -->
+    <main class="lite-stage">
+      <!-- MINIMALIST HOLOGRAPHIC FACE AVATAR CARD -->
+      <div class="face-card" id="faceCard">
+        <div class="face-canvas-wrapper">
+          <canvas id="minimalistFaceCanvas" width="320" height="240" class="face-canvas"></canvas>
+          <div class="face-scanline"></div>
+        </div>
+
+        <!-- Mode Toggle Pill Bar -->
+        <div class="mode-pill-bar">
+          <button class="btn-mode-pill active" id="btnModeHelpful" onclick="switchEmotionMode('helpful')">
+            <span>🟢 Helpful Mode</span>
+            <small>Active Diagnostics & Guidance</small>
+          </button>
+          <button class="btn-mode-pill" id="btnModeHappy" onclick="switchEmotionMode('happy')">
+            <span>✨ Happy Mode</span>
+            <small>Harvest & Milestone Celebrations</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- INTERACTIVE AI DIALOGUE & GENERATOR CARD -->
+      <section class="dialogue-generator-card">
+        <!-- Live Dialogue Output -->
+        <div class="speech-output-box" id="speechOutputBox">
+          <div class="speech-header">
+            <span class="speaker-tag" id="speakerTag">SAARTHI AI // AGRO-COPILOT</span>
+            <span class="latency-badge" id="latencyBadge">⚡ ZERO-LATENCY NLP</span>
+          </div>
+          <p class="speech-text" id="saarthiSpeechText">
+            "Hello, Operator. I am in Helpful Mode, ready to assist with crop diagnostics, chamber ventilation, and recipe optimizations. What would you like to generate or analyze?"
+          </p>
+        </div>
+
+        <!-- Proactive Assistance & Error-Correction Chips -->
+        <div class="suggestion-chips-row" id="suggestionChips">
+          <span class="chips-label">Quick Directives:</span>
+          <button class="chip-btn" onclick="executeQuickPrompt('Check current chamber stability and suggest optimizations')">
+            📊 Chamber Health Check
+          </button>
+          <button class="chip-btn" onclick="executeQuickPrompt('Diagnose oyster mushroom pinhead formation and CO2 levels')">
+            🍄 Pinhead CO2 Recipe
+          </button>
+          <button class="chip-btn" onclick="executeQuickPrompt('Isolate substrate and spot-treat Trichoderma mold')">
+            🟢 Trichoderma Treatment
+          </button>
+          <button class="chip-btn" onclick="executeQuickPrompt('Log 15kg oyster mushroom harvest and celebrate milestone')">
+            🎉 Log Harvest (Happy Mode)
+          </button>
+        </div>
+
+        <!-- Error Feedback & Auto-Correction Banner (Hidden by default) -->
+        <div class="error-correction-banner" id="correctionBanner" style="display: none;">
+          <span class="correction-icon">✨</span>
+          <span class="correction-text" id="correctionText">Auto-corrected query to optimal agronomy syntax.</span>
+        </div>
+
+        <!-- Floating Prompt Generator Input Bar -->
+        <form class="prompt-form" onsubmit="handlePromptSubmit(event)">
+          <div class="input-wrapper">
+            <span class="prompt-icon">💬</span>
+            <input 
+              type="text" 
+              id="promptInput" 
+              placeholder="Ask anything or generate directive (e.g., 'Ventilate Room 1', 'Fix tip burn')..." 
+              autocomplete="off"
+              oninput="handleTypingCadence()"
+            >
+            <button type="button" class="btn-mic-lite" id="btnMicLite" onclick="toggleLiteMic()" title="Speak with live microphone (M)">
+              🎙️
+            </button>
+            <button type="submit" class="btn-send-lite" title="Send Prompt">
+              <span>Send</span> ➤
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <!-- FOOTER TELEMETRY SYNC -->
+    <footer class="lite-footer">
+      <div class="footer-telemetry">
+        <span class="telemetry-pill">CO2: <strong id="tCO2">845 ppm</strong></span>
+        <span class="telemetry-pill">RH: <strong id="tRH">92%</strong></span>
+        <span class="telemetry-pill">TEMP: <strong id="tTemp">22.4 °C</strong></span>
+        <span class="telemetry-pill">FAN: <strong id="tFan">1,420 RPM</strong></span>
+      </div>
+      <div class="footer-status">
+        <span class="status-dot"></span> System Online & Synchronized
+      </div>
+    </footer>
+  </div>
+
+  <script src="lite.js"></script>
+</body>
+</html>
