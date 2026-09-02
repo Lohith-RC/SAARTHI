@@ -25,9 +25,11 @@ import static org.springframework.security.config.Customizer.withDefaults;
 public class SecurityConfig {
 
     private final SaarthiAuthenticationFilter authenticationFilter;
+    private final RateLimitingFilter rateLimitingFilter;
 
-    public SecurityConfig(SaarthiAuthenticationFilter authenticationFilter) {
+    public SecurityConfig(SaarthiAuthenticationFilter authenticationFilter, RateLimitingFilter rateLimitingFilter) {
         this.authenticationFilter = authenticationFilter;
+        this.rateLimitingFilter = rateLimitingFilter;
     }
 
     @Bean
@@ -37,9 +39,11 @@ public class SecurityConfig {
             .cors(withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public HUD + live read endpoints
+                // Public HUD + live read endpoints + static assets
                 .requestMatchers(
-                        "/", "/index.html", "/index", "/hud",
+                        "/", "/index.html", "/index", "/hud", "/lite.html", "/lite",
+                        "/style.css", "/app.js", "/lite.css", "/lite.js",
+                        "/*.css", "/*.js", "/*.html", "/*.png", "/*.jpg", "/*.jpeg", "/*.svg", "/*.ico", "/*.woff2", "/*.woff", "/*.ttf",
                         "/favicon.ico", "/error",
                         "/css/**", "/js/**", "/assets/**", "/images/**", "/fonts/**", "/static/**"
                 ).permitAll()
@@ -77,7 +81,8 @@ public class SecurityConfig {
                     response.getWriter().write("{\"error\":\"Forbidden\"}");
                 })
             )
-            .addFilterBefore(authenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(authenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(rateLimitingFilter, SaarthiAuthenticationFilter.class);
 
         return http.build();
     }

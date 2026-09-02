@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+*.env
+target/
+data/
+*.log
+*.mv.db
+*.trace.db
+.idea/
+*.iml
+.vscode/
+node_modules/
+docker-compose.override.yml

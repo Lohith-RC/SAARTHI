@@ -955,7 +955,15 @@ function initKeyboardShortcuts() {
     else if (key === 'M') toggleRealMic();
     else if (key === 'S') simulateBreathSpike();
     else if (key === 'R') resetToOptimal();
+    else if (key === 'X') emergencyStopFan();
   });
+}
+
+function emergencyStopFan() {
+  playTone(150, 'sawtooth', 0.4);
+  updateTelemetry(telemetry.co2, telemetry.rh, telemetry.temp, 0);
+  sendActuationToSpring('FAN_01', 'RELAY_OFF', null, 0, cropType);
+  showToast('EMERGENCY OVERRIDE', 'Exhaust blower shut down immediately [X].', 'warning');
 }
 
 // 15. SIMULATE BREATH TEST SPIKE
@@ -991,13 +999,21 @@ function getWebSocketUrl() {
   return `${wsProtocol}//${window.location.host}/ws/telemetry`;
 }
 
+let wsReconnectAttempts = 0;
+const WS_MAX_RECONNECT_ATTEMPTS = 10;
+
 function initSpringWebSocket() {
-  const wsUrl = getWebSocketUrl();
+  let wsUrl = getWebSocketUrl();
+  const token = aiBrainConfig.operatorToken || sessionStorage.getItem('saarthi_operator_token');
+  if (token) {
+    wsUrl += (wsUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  }
 
   try {
     telemetrySocket = new WebSocket(wsUrl);
 
     telemetrySocket.onopen = () => {
+      wsReconnectAttempts = 0;
       console.log("🌐 Connected to Spring Boot Telemetry WebSocket:", wsUrl);
       const dot = document.getElementById('masterStatusCapsule');
       if (dot) dot.style.borderColor = 'rgba(0, 245, 160, 0.5)';
@@ -1025,8 +1041,18 @@ function initSpringWebSocket() {
       }
     };
 
-    telemetrySocket.onclose = () => {
-      setTimeout(initSpringWebSocket, 6000);
+    telemetrySocket.onclose = (event) => {
+      if (event && event.code === 1008) {
+        console.warn("WebSocket closed by server (Policy Violation - Token Required).");
+        return;
+      }
+      if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+        const backoffDelay = Math.min(3000 * Math.pow(1.5, wsReconnectAttempts), 30000);
+        wsReconnectAttempts++;
+        setTimeout(initSpringWebSocket, backoffDelay);
+      } else {
+        showToast("Connection Lost", "WebSocket disconnected after multiple retries. Refresh page to reconnect.", "warning");
+      }
     };
 
     telemetrySocket.onerror = () => {
@@ -1040,15 +1066,27 @@ function initSpringWebSocket() {
 function sendActuationToSpring(target, action, duration, rpm, crop) {
   fetch(`${getApiBaseUrl()}/api/v1/actuate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getOperatorHeaders(),
     body: JSON.stringify({ target, action, durationSeconds: duration, rpm, crop, reason: 'CLIENT_UI_ACTION' })
-  }).catch(() => {});
+  }).then(async (res) => {
+    if (!res.ok) {
+      showToast("Actuation Restricted", "Operator token required to actuate physical relays. Configure in Brain modal.", "error");
+    }
+  }).catch((err) => {
+    console.warn("Actuation error:", err);
+  });
 }
 
 function pushTelemetryToSpring() {
+  const headers = { 'Content-Type': 'application/json' };
+  const devToken = sessionStorage.getItem('saarthi_device_token') || '';
+  if (devToken) {
+    headers['X-Device-Token'] = devToken;
+  }
+
   fetch(`${getApiBaseUrl()}/api/v1/telemetry/push`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers,
     body: JSON.stringify({
       deviceId: 'SAARTHI_WEB_HUD',
       co2Ppm: telemetry.co2,

@@ -148,10 +148,6 @@ public class GeminiAiService {
         }
 
         String userQuery = request.getQuery().trim();
-        // Client-supplied API keys are NOT used unless explicitly enabled; the
-        // server's own configured keys are always preferred (prevents BYOK abuse
-        // and accidental key leakage from browser clients).
-        String customApiKey = customerApiKeysEnabled ? request.getApiKey() : null;
         String requestedModel = request.getModel();
 
         TelemetryRecord current = telemetryService.getCurrentStateRecord();
@@ -166,20 +162,18 @@ public class GeminiAiService {
             }
         }
 
-        // 2. Try Google Gemini API with gemini-3.6-flash (Primary Generative Engine)
-        String activeGeminiKey = (customApiKey != null && !customApiKey.startsWith("gsk_") && customApiKey.length() > 10) ? customApiKey : geminiApiKey;
-        if (activeGeminiKey != null && !activeGeminiKey.isBlank() && activeGeminiKey.length() > 10) {
-            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, activeGeminiKey, requestedModel, allowActuation);
+        // 2. Try Google Gemini API (Server-side key exclusively)
+        if (geminiApiKey != null && !geminiApiKey.isBlank() && geminiApiKey.length() > 10) {
+            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, geminiApiKey, requestedModel, allowActuation);
             if (geminiResponse != null && geminiResponse.isSuccess()) {
                 recordConversationTurn(userQuery, geminiResponse.getReplyText());
                 return geminiResponse;
             }
         }
 
-        // 3. Try Groq (DeepSeek-R1 / Llama 3.3)
-        String activeGroqKey = (customApiKey != null && customApiKey.startsWith("gsk_")) ? customApiKey : groqApiKey;
-        if (activeGroqKey != null && !activeGroqKey.isBlank()) {
-            ChatResponse groqResponse = callGroqApi(userQuery, systemPrompt, activeGroqKey, requestedModel, allowActuation);
+        // 3. Try Groq (Server-side key exclusively)
+        if (groqApiKey != null && !groqApiKey.isBlank() && groqApiKey.length() > 10) {
+            ChatResponse groqResponse = callGroqApi(userQuery, systemPrompt, groqApiKey, requestedModel, allowActuation);
             if (groqResponse != null && groqResponse.isSuccess()) {
                 recordConversationTurn(userQuery, groqResponse.getReplyText());
                 return groqResponse;
@@ -253,7 +247,11 @@ public class GeminiAiService {
 
     private ChatResponse callGeminiApi(String userQuery, String systemPrompt, String apiKey, String model, boolean allowActuation) {
         String targetModel = (model != null && model.startsWith("gemini-")) ? model : (geminiDefaultModel != null && !geminiDefaultModel.isBlank() ? geminiDefaultModel : "gemini-3.6-flash");
-        String[] candidateModels = new String[]{targetModel, "gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"};
+        List<String> candidateModels = new ArrayList<>();
+        candidateModels.add(targetModel);
+        if (!targetModel.equals("gemini-2.0-flash")) {
+            candidateModels.add("gemini-2.0-flash");
+        }
 
         for (String activeModel : candidateModels) {
             try {
@@ -288,7 +286,7 @@ public class GeminiAiService {
                 HttpRequest httpRequest = HttpRequest.newBuilder()
                         .uri(URI.create(endpoint))
                         .header("Content-Type", "application/json")
-                        .timeout(Duration.ofSeconds(12))
+                        .timeout(Duration.ofSeconds(6))
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 
@@ -319,7 +317,11 @@ public class GeminiAiService {
         String activeModel = (model != null && !model.isBlank() && !model.startsWith("gemini-") && !model.contains("openjarvis"))
                 ? model : (groqDefaultModel != null && !groqDefaultModel.isBlank() ? groqDefaultModel : "openai/gpt-oss-120b");
 
-        String[] candidateGroqModels = new String[]{activeModel, "openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"};
+        List<String> candidateGroqModels = new ArrayList<>();
+        candidateGroqModels.add(activeModel);
+        if (!activeModel.equals("openai/gpt-oss-120b")) {
+            candidateGroqModels.add("openai/gpt-oss-120b");
+        }
         String endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
         List<Map<String, String>> messages = new ArrayList<>();
@@ -349,7 +351,7 @@ public class GeminiAiService {
                         .uri(URI.create(endpoint))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + apiKey.trim())
-                        .timeout(Duration.ofSeconds(12))
+                        .timeout(Duration.ofSeconds(6))
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 

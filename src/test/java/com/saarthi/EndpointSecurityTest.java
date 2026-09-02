@@ -125,6 +125,8 @@ public class EndpointSecurityTest {
         mockMvc.perform(get("/api/v1/telemetry/current")).andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/ai/status")).andExpect(status().isOk());
         mockMvc.perform(get("/")).andExpect(status().isOk());
+        mockMvc.perform(get("/style.css")).andExpect(status().isOk());
+        mockMvc.perform(get("/app.js")).andExpect(status().isOk());
     }
 
     @Test

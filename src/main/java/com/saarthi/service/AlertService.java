@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -164,7 +165,7 @@ public class AlertService {
             return;
         }
 
-        new Thread(() -> {
+        CompletableFuture.runAsync(() -> {
             try {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("app", "Project SAARTHI");
@@ -198,7 +199,7 @@ public class AlertService {
             } catch (Exception e) {
                 log.warn("Failed to dispatch webhook alert: {}", e.getMessage());
             }
-        }).start();
+        });
     }
 
     public List<Map<String, Object>> getRecentAlerts() {

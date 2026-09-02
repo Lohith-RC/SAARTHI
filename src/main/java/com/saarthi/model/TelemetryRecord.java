@@ -14,14 +14,31 @@ public class TelemetryRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "device_id")
     private String deviceId;
+
+    @Column(name = "co2_ppm")
     private Double co2Ppm;
+
+    @Column(name = "humidity_rh")
     private Double humidityRh;
+
+    @Column(name = "temp_c")
     private Double tempC;
+
+    @Column(name = "fan_rpm")
     private Integer fanRpm;
+
+    @Column(name = "fan_duty")
     private Integer fanDuty;
+
+    @Column(name = "crop_type")
     private String cropType; // 'mushroom' or 'hydro'
+
+    @Column(name = "status")
     private String status;   // 'OPTIMAL', 'WARNING', 'CRITICAL'
+
+    @Column(name = "timestamp")
     private Long timestamp;
 
     public TelemetryRecord() {

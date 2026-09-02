@@ -32,6 +32,13 @@ public class TelemetryController {
     public ResponseEntity<?> pushTelemetry(@RequestBody Map<String, Object> payload) {
 
         String deviceId = (String) payload.getOrDefault("deviceId", "SAARTHI_001");
+        if (deviceId != null) {
+            deviceId = deviceId.trim();
+            if (deviceId.length() > 64 || !deviceId.matches("^[a-zA-Z0-9_\\-\\.]+$")) {
+                throw new IllegalArgumentException("deviceId must be alphanumeric (dashes/dots/underscores allowed, max 64 characters)");
+            }
+        }
+
         Double co2 = toDouble(payload.get("co2Ppm"));
         Double rh = toDouble(payload.get("humidityRh"));
         Double temp = toDouble(payload.get("tempC"));

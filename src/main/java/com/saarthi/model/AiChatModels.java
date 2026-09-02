@@ -1,30 +1,35 @@
 package com.saarthi.model;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 /**
  * Request and Response DTOs for Saarthi Voice AI Core with Emotional Intelligence.
  */
 public class AiChatModels {
 
     public static class ChatRequest {
+
+        @NotBlank(message = "Query cannot be blank")
+        @Size(max = 2000, message = "Query cannot exceed 2000 characters")
         private String query;
-        private String apiKey;
+
+        @Size(max = 64, message = "Model name cannot exceed 64 characters")
         private String model;
+
+        @Size(max = 16, message = "Language tag cannot exceed 16 characters")
         private String language;
 
         public ChatRequest() {}
 
-        public ChatRequest(String query, String apiKey, String model, String language) {
+        public ChatRequest(String query, String model, String language) {
             this.query = query;
-            this.apiKey = apiKey;
             this.model = model;
             this.language = language;
         }
 
         public String getQuery() { return query; }
         public void setQuery(String query) { this.query = query; }
-
-        public String getApiKey() { return apiKey; }
-        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
 
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }

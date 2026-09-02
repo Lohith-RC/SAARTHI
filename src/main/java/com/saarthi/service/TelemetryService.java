@@ -66,10 +66,14 @@ public class TelemetryService {
         ));
     }
 
+    private static final int MAX_BUFFER_CAPACITY = 250;
+    private volatile boolean storageDegraded = false;
+    private volatile Long actuationExpiryEpoch = null;
+
     /**
-     * Ingests telemetry packet from hardware or simulation.
+     * Ingests telemetry packet from hardware or simulation. Synchronized for atomic compound updates.
      */
-    public TelemetryRecord ingestTelemetry(String deviceId, Double co2, Double rh, Double temp, Integer fanRpm, String crop) {
+    public synchronized TelemetryRecord ingestTelemetry(String deviceId, Double co2, Double rh, Double temp, Integer fanRpm, String crop) {
         this.currentDeviceId = deviceId != null ? deviceId : this.currentDeviceId;
         if (co2 != null) this.currentCo2 = co2;
         if (rh != null) this.currentRh = rh;
@@ -89,7 +93,11 @@ public class TelemetryService {
         // Broadcast immediately to WebSocket clients (zero latency)
         webSocketHandler.broadcastTelemetry(record);
 
-        // Buffer record for batched disk persistence
+        // Bounded writeBuffer (protect heap during sustained DB failure)
+        if (writeBuffer.size() >= MAX_BUFFER_CAPACITY) {
+            writeBuffer.poll();
+            log.warn("[BUFFER OVERFLOW] Telemetry buffer reached max capacity (250); dropped oldest record.");
+        }
         writeBuffer.offer(record);
         if (writeBuffer.size() >= 50) {
             flushWriteBuffer();
@@ -112,7 +120,37 @@ public class TelemetryService {
         }
 
         if (!batch.isEmpty()) {
-            telemetryRepository.saveAll(batch);
+            try {
+                telemetryRepository.saveAll(batch);
+                if (storageDegraded) {
+                    log.info("[STORAGE RECOVERED] Telemetry database connection restored.");
+                    storageDegraded = false;
+                }
+            } catch (Exception e) {
+                storageDegraded = true;
+                log.error("[STORAGE DEGRADED] Database flush failed: {}. Retaining in bounded memory.", e.getMessage());
+            }
+        }
+    }
+
+    public boolean isStorageDegraded() {
+        return storageDegraded;
+    }
+
+    /**
+     * Checks if timed actuation has expired and auto-releases back to nominal baseline.
+     */
+    @Scheduled(fixedRate = 1000)
+    public synchronized void checkActuationExpiry() {
+        if (actuationExpiryEpoch != null && Instant.now().getEpochSecond() >= actuationExpiryEpoch) {
+            log.info("Actuation duration expired. Auto-releasing fan to baseline nominal RPM.");
+            actuationExpiryEpoch = null;
+            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+            this.currentFanRpm = recipe.getBaselineFanRpm();
+            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
+            evaluateThresholds();
+            TelemetryRecord record = getCurrentStateRecord();
+            webSocketHandler.broadcastTelemetry(record);
         }
     }
 
@@ -121,33 +159,55 @@ public class TelemetryService {
         flushWriteBuffer();
     }
 
+    /**
+     * Evaluates metrics independently so concurrent anomalies (e.g. high CO2 AND low RH)
+     * are each alerted rather than masked by mutual exclusion.
+     */
     private void evaluateThresholds() {
         CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+        boolean warning = false;
+        boolean critical = false;
 
-        if (currentCo2 > recipe.getMaxCo2()) {
-            this.currentStatus = "WARNING";
+        // 1. Independent CO2 Evaluation
+        if (currentCo2 != null && currentCo2 > recipe.getMaxCo2()) {
+            warning = true;
             if (this.currentFanRpm < recipe.getPurgeFanRpm()) {
                 this.currentFanRpm = recipe.getPurgeFanRpm();
                 this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getPurgeFanRpm() / 3000.0) * 100));
             }
             if (currentCo2 >= recipe.getSpikeCo2Threshold()) {
+                critical = true;
                 alertService.triggerAlert("CO2_SPIKE_" + recipe.getCropId().toUpperCase(), "CRITICAL", "High CO2 Concentration",
                         String.format("CO2 reached %.0f ppm in %s chamber. FAE blower ramped to %d RPM.", currentCo2, recipe.getName(), currentFanRpm),
                         Map.of("co2", currentCo2, "rpm", currentFanRpm, "crop", currentCropType));
             }
-        } else if (currentRh < recipe.getMinRh()) {
-            this.currentStatus = "WARNING";
+        }
+
+        // 2. Independent Relative Humidity Evaluation
+        if (currentRh != null && currentRh < recipe.getMinRh()) {
+            warning = true;
             alertService.triggerAlert("HUMIDITY_LOW_" + recipe.getCropId().toUpperCase(), "WARNING", "Low Relative Humidity",
                     String.format("Humidity dropped to %.1f%% in %s chamber (below %.0f%%).", currentRh, recipe.getName(), recipe.getMinRh()),
                     Map.of("rh", currentRh, "crop", currentCropType));
-        } else if (currentTemp > recipe.getMaxTemp() || currentTemp < recipe.getMinTemp()) {
+        } else if (currentRh != null && currentRh > recipe.getMaxRh()) {
+            warning = true;
+        }
+
+        // 3. Independent Temperature Evaluation
+        if (currentTemp != null && (currentTemp > recipe.getMaxTemp() || currentTemp < recipe.getMinTemp())) {
+            warning = true;
+        }
+
+        if (critical) {
+            this.currentStatus = "CRITICAL";
+        } else if (warning) {
             this.currentStatus = "WARNING";
         } else {
             this.currentStatus = "OPTIMAL";
         }
     }
 
-    public TelemetryRecord getCurrentStateRecord() {
+    public synchronized TelemetryRecord getCurrentStateRecord() {
         return new TelemetryRecord(
                 currentDeviceId,
                 currentCo2,
@@ -165,12 +225,18 @@ public class TelemetryService {
     }
 
     /**
-     * Executes manual or AI-driven actuation commands.
+     * Executes manual or AI-driven actuation commands. Synchronized for atomic updates.
      */
-    public TelemetryRecord executeActuation(ActuationCommand command) {
+    public synchronized TelemetryRecord executeActuation(ActuationCommand command) {
         if (command == null || command.getAction() == null) return getCurrentStateRecord();
 
         String action = command.getAction().toUpperCase();
+        if (command.getDurationSeconds() != null && command.getDurationSeconds() > 0) {
+            this.actuationExpiryEpoch = Instant.now().getEpochSecond() + command.getDurationSeconds();
+        } else if ("RELAY_OFF".equals(action)) {
+            this.actuationExpiryEpoch = null;
+        }
+
         if ("RELAY_ON".equals(action) || "VENTILATE".equals(action) || "SET_RPM".equals(action)) {
             this.currentFanRpm = command.getRpm() != null ? command.getRpm() : 2400;
             this.currentFanDuty = 80;
@@ -179,27 +245,26 @@ public class TelemetryService {
             this.currentFanDuty = 0;
         } else if ("SWITCH_CROP".equals(action)) {
             this.currentCropType = "hydro".equalsIgnoreCase(command.getCrop()) ? "hydro" : "mushroom";
-            if ("mushroom".equals(this.currentCropType)) {
-                this.currentCo2 = 845.0;
-                this.currentRh = 92.0;
-                this.currentTemp = 22.4;
-                this.currentFanRpm = 1420;
-            } else {
-                this.currentCo2 = 1100.0;
-                this.currentRh = 68.0;
-                this.currentTemp = 20.8;
-                this.currentFanRpm = 1100;
-            }
+            CropRecipe recipe = cropRecipeRegistry.getOrDefault(this.currentCropType, cropRecipeRegistry.get("mushroom"));
+            this.currentCo2 = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
+            this.currentRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
+            this.currentTemp = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
+            this.currentFanRpm = recipe.getBaselineFanRpm();
+            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
         } else if ("SPIKE".equals(action)) {
-            this.currentCo2 = 1520.0;
-            this.currentRh = 94.0;
+            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+            this.currentCo2 = recipe.getSpikeCo2Threshold() + 120.0;
+            this.currentRh = Math.min(98.0, recipe.getMaxRh() + 2.0);
             this.currentTemp = 23.2;
-            this.currentFanRpm = 2800;
+            this.currentFanRpm = recipe.getPurgeFanRpm();
+            this.currentFanDuty = (int) Math.min(100, Math.max(0, (this.currentFanRpm / 3000.0) * 100));
         } else if ("RESET".equals(action)) {
-            this.currentCo2 = 845.0;
-            this.currentRh = 92.0;
-            this.currentTemp = 22.4;
-            this.currentFanRpm = 1420;
+            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+            this.currentCo2 = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
+            this.currentRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
+            this.currentTemp = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
+            this.currentFanRpm = recipe.getBaselineFanRpm();
+            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
         }
 
         evaluateThresholds();
