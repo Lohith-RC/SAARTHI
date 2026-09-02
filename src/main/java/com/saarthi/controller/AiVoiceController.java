@@ -13,13 +13,13 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Spring REST Controller for Voice & Text AI Agronomy Copilot, ElevenLabs TTS & OpenJarvis Memory Traces.
  */
 @RestController
 @RequestMapping("/api/v1/ai")
-@CrossOrigin(origins = "*")
 public class AiVoiceController {
 
     private final GeminiAiService aiService;
@@ -32,7 +32,7 @@ public class AiVoiceController {
 
     /**
      * POST /api/v1/ai/chat
-     * Supports Google Gemini 3.6 Flash, Groq DeepSeek-R1, and Local OpenJarvis / Ollama.
+     * Executed on lightweight Virtual Threads (spring.threads.virtual.enabled=true).
      */
     @PostMapping("/chat")
     public ResponseEntity<ChatResponse> handleChatQuery(@RequestBody ChatRequest request) {

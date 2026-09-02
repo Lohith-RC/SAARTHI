@@ -46,11 +46,29 @@ public class SaarthiApplicationTests {
             """;
 
         mockMvc.perform(post("/api/v1/telemetry/push")
+                .header("X-Device-Token", "SAARTHI_UUID4_MASTER_SECRET")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACK"))
                 .andExpect(jsonPath("$.deviceId").value("TEST_NODE_99"));
+    }
+
+    @Test
+    void testTelemetryPushUnauthorized() throws Exception {
+        String payload = """
+            {
+                "deviceId": "ROGUE_NODE",
+                "co2Ppm": 999.0
+            }
+            """;
+
+        mockMvc.perform(post("/api/v1/telemetry/push")
+                .header("X-Device-Token", "INVALID_TOKEN")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
     }
 
     @Test
@@ -85,6 +103,12 @@ public class SaarthiApplicationTests {
                 .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.modelUsed").value("saarthi-local-rules"));
+                .andExpect(jsonPath("$.modelUsed").value("saarthi-generative-core"));
+    }
+
+    @Test
+    void testAlertsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/alerts/recent"))
+                .andExpect(status().isOk());
     }
 }

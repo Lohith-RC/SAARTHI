@@ -34,7 +34,7 @@ const history = {
 const aiBrainConfig = {
   apiKey: localStorage.getItem('saarthi_ai_api_key') || '',
   elevenLabsKey: localStorage.getItem('saarthi_elevenlabs_key') || '',
-  model: localStorage.getItem('saarthi_ai_model') || 'deepseek-r1-distill-llama-70b',
+  model: localStorage.getItem('saarthi_ai_model') || 'openai/gpt-oss-120b',
   voiceEngine: localStorage.getItem('saarthi_voice_engine') || 'elevenlabs',
   language: 'en-US'
 };
@@ -66,6 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initKeyboardShortcuts();
   updateAllSparklines();
   animate3D();
+
+  // Auto-launch guided tour for first-time operators
+  setTimeout(() => {
+    if (!localStorage.getItem('saarthi_tour_completed')) {
+      startOnboardingTour(false);
+    }
+  }, 1200);
 });
 
 // 1. INITIALIZE THREE.JS 3D SCENE
@@ -273,9 +280,24 @@ function buildBioluminescentParticles() {
   scene.add(particlesMesh);
 }
 
-// 6. ANIMATION LOOP
-function animate3D() {
+// 6. ANIMATION LOOP & PAGE VISIBILITY THROTTLER (PERF-03)
+let isPageVisible = true;
+let lastHiddenRender = 0;
+
+document.addEventListener('visibilitychange', () => {
+  isPageVisible = !document.hidden;
+});
+
+function animate3D(now) {
   requestAnimationFrame(animate3D);
+
+  // When tab is hidden/backgrounded, throttle to 1 FPS to eliminate GPU thermal load and battery drain
+  if (!isPageVisible) {
+    if (now - lastHiddenRender < 1000) {
+      return;
+    }
+    lastHiddenRender = now;
+  }
 
   if (particlesMesh) {
     const pos = particlesMesh.geometry.attributes.position.array;
@@ -288,7 +310,9 @@ function animate3D() {
   }
 
   // Render Procedural Animated Cyber Face Avatar (Eyes & Lip-Sync Mouth)
-  drawAvatarFace();
+  if (isPageVisible) {
+    drawAvatarFace();
+  }
 
   controls.update();
   renderer.render(scene, camera);
@@ -424,19 +448,59 @@ function syncHUD() {
   document.getElementById('hudTempVal').textContent = telemetry.temp.toFixed(1);
   document.getElementById('hudFanVal').textContent = `${telemetry.fanRpm}`;
 
-  // Evaluate Thresholds
+  // Evaluate Thresholds with WCAG 2.1 Geometric Shape & Contrast Encoding
   const isCO2Danger = telemetry.co2 > 1300;
   const statCO2 = document.getElementById('hudCO2Status');
-  if (isCO2Danger) {
-    statCO2.className = 'm-status-pill danger';
-    statCO2.textContent = 'SPIKE ALERT';
-    document.getElementById('masterStatusCapsule').style.borderColor = '#FF3366';
-    document.getElementById('masterStatusText').innerHTML = 'STATUS: <strong style="color:#FF3366">WARNING (CO2 SPIKE)</strong>';
-  } else {
-    statCO2.className = 'm-status-pill ok';
-    statCO2.textContent = 'OPTIMAL';
-    document.getElementById('masterStatusCapsule').style.borderColor = 'rgba(0, 245, 160, 0.3)';
-    document.getElementById('masterStatusText').innerHTML = 'SPRING AUTONOMOUS LOOP: <strong>ONLINE</strong>';
+  if (statCO2) {
+    if (isCO2Danger) {
+      statCO2.className = 'm-status-pill danger';
+      statCO2.textContent = '▲ SPIKE';
+      document.getElementById('masterStatusCapsule').style.borderColor = '#FF3366';
+      document.getElementById('masterStatusText').innerHTML = 'STATUS: <strong style="color:#FF3366">▲ WARNING (CO2 SPIKE)</strong>';
+    } else {
+      statCO2.className = 'm-status-pill ok';
+      statCO2.textContent = '● OPTIMAL';
+      document.getElementById('masterStatusCapsule').style.borderColor = 'rgba(0, 245, 160, 0.3)';
+      document.getElementById('masterStatusText').innerHTML = 'SPRING AUTONOMOUS LOOP: <strong>● ONLINE</strong>';
+    }
+  }
+
+  const statRH = document.getElementById('hudRHStatus');
+  if (statRH) {
+    const isRHLow = telemetry.rh < 75;
+    if (isRHLow) {
+      statRH.className = 'm-status-pill warning';
+      statRH.textContent = '▲ LOW RH';
+    } else {
+      statRH.className = 'm-status-pill ok';
+      statRH.textContent = '● OPTIMAL';
+    }
+  }
+
+  const statTemp = document.getElementById('hudTempStatus');
+  if (statTemp) {
+    const isTempAnomaly = telemetry.temp > 27 || telemetry.temp < 16;
+    if (isTempAnomaly) {
+      statTemp.className = 'm-status-pill warning';
+      statTemp.textContent = '▲ WARNING';
+    } else {
+      statTemp.className = 'm-status-pill ok';
+      statTemp.textContent = '● OPTIMAL';
+    }
+  }
+
+  const statFan = document.getElementById('hudFanStatus');
+  if (statFan) {
+    if (telemetry.fanRpm >= 2400) {
+      statFan.className = 'm-status-pill warning';
+      statFan.textContent = '▲ PURGE';
+    } else if (telemetry.fanRpm === 0) {
+      statFan.className = 'm-status-pill danger';
+      statFan.textContent = '✖ STOPPED';
+    } else {
+      statFan.className = 'm-status-pill ok';
+      statFan.textContent = '● AUTO';
+    }
   }
 }
 
@@ -834,12 +898,19 @@ function togglePanel(side) {
 function toggleHudFocus() {
   playTone(720, 'sawtooth', 0.08);
   const wrapper = document.getElementById('hudOverlayWrapper');
+  const banner = document.getElementById('focusModeBanner');
   const btn = document.getElementById('btnHudFocus');
   if (wrapper && btn) {
     isHudFocused = !isHudFocused;
     wrapper.classList.toggle('hud-hidden', isHudFocused);
     btn.classList.toggle('active', isHudFocused);
-    btn.textContent = isHudFocused ? '👁️ HUD Active' : '👁️ Focus';
+    btn.textContent = isHudFocused ? '👁️ Restore HUD' : '👁️ Focus';
+    if (banner) banner.style.display = isHudFocused ? 'block' : 'none';
+    if (isHudFocused) {
+      showToast('Immersion Mode Active', 'HUD minimized. Click banner or press [H] to restore.', 'info');
+    } else {
+      showToast('HUD Restored', 'Full spatial controls active.', 'info');
+    }
   }
 }
 
@@ -872,6 +943,7 @@ function simulateBreathSpike() {
   updateTelemetry(1520, 94, 23.2, 2800);
   speakSaarthi("Warning: Rapid CO2 breath spike detected at 1,520 ppm. Autonomous fresh air ventilation activated.");
   sendActuationToSpring('SIMULATION', 'SPIKE', null, null, null);
+  showToast('Climate Anomaly', 'CO2 spiked to 1,520 ppm. FAE ventilation auto-ramped.', 'warning');
 }
 
 function resetToOptimal() {
@@ -879,6 +951,7 @@ function resetToOptimal() {
   updateTelemetry(845, 92, 22.4, 1420);
   speakSaarthi("Chamber parameters normalized to baseline. Systems optimal.");
   sendActuationToSpring('SIMULATION', 'RESET', null, null, null);
+  showToast('Chamber Reset', 'Parameters returned to optimal baseline.', 'success');
 }
 
 // 16. SPRING BOOT WEBSOCKET & REST RESOLUTION
@@ -914,6 +987,17 @@ function initSpringWebSocket() {
         const record = JSON.parse(event.data);
         if (record && record.co2Ppm !== undefined) {
           updateTelemetry(record.co2Ppm, record.humidityRh, record.tempC, record.fanRpm);
+          const badge = document.getElementById('envModeBadge');
+          const badgeLabel = document.getElementById('envModeLabel');
+          if (badge && badgeLabel) {
+            if (record.deviceId && record.deviceId.startsWith('ESP32')) {
+              badge.className = 'env-mode-badge live';
+              badgeLabel.textContent = `🟢 LIVE NODE (${record.deviceId})`;
+            } else {
+              badge.className = 'env-mode-badge simulated';
+              badgeLabel.textContent = '🟡 TESTBENCH SIMULATION';
+            }
+          }
         }
       } catch (e) {
         console.warn("WebSocket parse error:", e);
@@ -973,7 +1057,14 @@ function initBrainConfig() {
   if (voiceSelect) voiceSelect.value = aiBrainConfig.voiceEngine;
 
   if (dot) dot.className = 'brain-dot connected';
-  if (statusText) statusText.textContent = `⚡ AI: ${aiBrainConfig.model.includes('deepseek') ? 'DEEPSEEK-R1' : 'GEMINI-2.0'}`;
+  if (statusText) {
+    let name = 'GROQ AI';
+    if (aiBrainConfig.model.includes('gpt')) name = 'GPT-OSS 120B';
+    else if (aiBrainConfig.model.includes('qwen')) name = 'QWEN 3.8';
+    else if (aiBrainConfig.model.includes('gemini')) name = 'GEMINI 3.6';
+    else if (aiBrainConfig.model.includes('deepseek')) name = 'DEEPSEEK-R1';
+    statusText.textContent = `⚡ AI: ${name}`;
+  }
   if (aiTagText) aiTagText.textContent = aiBrainConfig.voiceEngine === 'elevenlabs' ? 'STUDIO AI VOICE' : 'SPRING AI LIVE';
   if (aiDot) aiDot.className = 'dot-green';
 }
@@ -1140,6 +1231,7 @@ function initSpeechRecognition() {
       console.warn('Speech recognition error:', e);
       stopMic();
       setOrbState('idle');
+      showToast('Microphone Alert', `Speech input error (${e.error || 'denied'}). You can type queries in the prompt bar.`, 'warning');
     };
 
     recognition.onend = () => {
@@ -1151,11 +1243,16 @@ function initSpeechRecognition() {
 
 function toggleRealMic() {
   if (!recognition) {
-    alert("Speech recognition is supported in Google Chrome, Edge, and Safari.");
+    showToast('Speech Unsupported', 'Web Speech API is supported in Google Chrome, Edge, and Safari.', 'warning');
     return;
   }
   if (!isRecordingMic) {
-    recognition.start();
+    try {
+      recognition.start();
+      showToast('Microphone Active', 'Listening for speech input...', 'info');
+    } catch (err) {
+      console.warn("Recognition start error:", err);
+    }
   } else {
     recognition.stop();
   }
@@ -1166,7 +1263,91 @@ function stopMic() {
   const btn = document.getElementById('btnMicRecord');
   if (btn) btn.classList.remove('recording');
   const txt = document.getElementById('btnMicText');
-  if (txt) txt.textContent = 'Speak to Saarthi (Live Mic) [M]';
+  if (txt) txt.textContent = 'Push to Talk [M]';
+}
+
+// 19B. CONTINUOUS AMBIENT "HEY SAARTHI" WAKE-WORD ENGINE
+let isWakeWordMode = false;
+let wakeWordRecognition = null;
+
+function initWakeWordEngine() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+
+  wakeWordRecognition = new SpeechRecognition();
+  wakeWordRecognition.continuous = true;
+  wakeWordRecognition.interimResults = true;
+  wakeWordRecognition.lang = aiBrainConfig.language || 'en-US';
+
+  wakeWordRecognition.onresult = (event) => {
+    if (!isWakeWordMode || isQueryPending) return;
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript.trim().toLowerCase();
+      
+      // Check for wake words: "hey saarthi", "ok saarthi", "saarthi"
+      if (transcript.includes('saarthi')) {
+        const matchIdx = transcript.indexOf('saarthi') + 'saarthi'.length;
+        const command = transcript.substring(matchIdx).trim();
+
+        playTone(880, 'sine', 0.12);
+        showToast('Wake-Word Detected', 'Saarthi heard you! Processing query...', 'info');
+
+        if (command.length > 2) {
+          processUserQuery(command);
+        } else {
+          speakSaarthi("Yes Operator, I am listening. How can I assist you?");
+        }
+        break;
+      }
+    }
+  };
+
+  wakeWordRecognition.onerror = (e) => {
+    if (isWakeWordMode && e.error !== 'no-speech') {
+      console.warn("Wake-word error:", e.error);
+    }
+  };
+
+  wakeWordRecognition.onend = () => {
+    if (isWakeWordMode) {
+      setTimeout(() => {
+        try {
+          if (isWakeWordMode && currentOrbState !== 'speaking' && !isRecordingMic) {
+            wakeWordRecognition.start();
+          }
+        } catch (err) {}
+      }, 500);
+    }
+  };
+}
+
+function toggleWakeWordMode() {
+  isWakeWordMode = !isWakeWordMode;
+  const btn = document.getElementById('btnWakeWordToggle');
+  const txt = document.getElementById('wakeWordStatusText');
+  const icon = document.getElementById('wakeIcon');
+
+  if (isWakeWordMode) {
+    if (!wakeWordRecognition) initWakeWordEngine();
+    try {
+      wakeWordRecognition.start();
+    } catch (e) {}
+    if (btn) btn.classList.add('active');
+    if (txt) txt.textContent = 'Wake-Word: ON';
+    if (icon) icon.textContent = '🟢';
+    showToast('Wake-Word Armed', 'Continuous listening active. Say "Hey Saarthi" anytime.', 'success');
+    playTone(660, 'sine', 0.08);
+  } else {
+    try {
+      if (wakeWordRecognition) wakeWordRecognition.stop();
+    } catch (e) {}
+    if (btn) btn.classList.remove('active');
+    if (txt) txt.textContent = 'Wake-Word: OFF';
+    if (icon) icon.textContent = '👂';
+    showToast('Wake-Word Disarmed', 'Continuous listening stopped.', 'info');
+    playTone(440, 'sine', 0.08);
+  }
 }
 
 function handleTextSubmit(event) {
@@ -1179,8 +1360,22 @@ function handleTextSubmit(event) {
   processUserQuery(text);
 }
 
+let isQueryPending = false;
+
 // 20. MAIN QUERY PROCESSOR
 async function processUserQuery(queryText) {
+  if (!queryText || isQueryPending) return;
+  isQueryPending = true;
+
+  // Cancel prior speech playback to avoid audio collision
+  if (currentAudioElement) {
+    currentAudioElement.pause();
+    currentAudioElement = null;
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+
   displayUserQuery(queryText);
   setOrbState('thinking');
   playTone(520, 'triangle', 0.1);
@@ -1205,8 +1400,10 @@ async function processUserQuery(queryText) {
       }
       if (data.executedAction) {
         handleExecutedAction(data.executedAction);
+        showToast('Autonomous Actuation', `Triggered ${data.executedAction.action} via AI directive.`, 'info');
       }
       speakSaarthi(data.replyText);
+      isQueryPending = false;
       return;
     }
   } catch (backendError) {
@@ -1214,6 +1411,7 @@ async function processUserQuery(queryText) {
   }
 
   queryLocalAgronomyEngine(queryText);
+  isQueryPending = false;
 }
 
 function displayUserQuery(text) {
@@ -1472,5 +1670,149 @@ async function submitLedgerEvent() {
   } catch (err) {
     console.error('Error submitting ledger milestone:', err);
   }
+}
+
+/* =========================================================================
+   ONBOARDING SPOTLIGHT WALKTHROUGH & ADVANCED UX CONTROLLERS
+   ========================================================================= */
+
+let currentTourStep = 0;
+const tourSteps = [
+  {
+    stepBadge: "STEP 1 OF 3",
+    icon: "🌐",
+    title: "Spatial 3D Digital Twin",
+    desc: "This is your real-time 3D grow room. Click and drag to orbit around your grow racks, switch perspective camera presets, or toggle Virtual IR thermal mode [T].",
+    targetElementId: null,
+    btnText: "Explore Controls →"
+  },
+  {
+    stepBadge: "STEP 2 OF 3",
+    icon: "🕹️",
+    title: "Chamber Telemetry & Overrides",
+    desc: "Monitor real-time CO2, humidity, and temperature sparklines on the left. Test climate overrides and breath spikes in safe simulation mode.",
+    targetElementId: "panelLeft",
+    btnText: "Meet AI Copilot →"
+  },
+  {
+    stepBadge: "STEP 3 OF 3",
+    icon: "🤖",
+    title: "AI Agronomist Copilot",
+    desc: "Chat with Saarthi using live voice or text. Ask for crop pathology diagnoses, nutrient tips, or let Saarthi autonomously ramp exhaust blowers.",
+    targetElementId: "panelRight",
+    btnText: "Get Started ✨"
+  }
+];
+
+function startOnboardingTour(force = false) {
+  if (!force && localStorage.getItem('saarthi_tour_completed') === 'true') return;
+  currentTourStep = 0;
+  const overlay = document.getElementById('onboardingOverlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    renderTourStep();
+    playTone(540, 'sine', 0.1);
+  }
+}
+
+function renderTourStep() {
+  const step = tourSteps[currentTourStep];
+  if (!step) return;
+
+  const badge = document.getElementById('tourStepBadge');
+  const icon = document.getElementById('tourIconRow');
+  const title = document.getElementById('tourTitle');
+  const desc = document.getElementById('tourDesc');
+  const btnNext = document.getElementById('btnTourNext');
+  const btnPrev = document.getElementById('btnTourPrev');
+
+  if (badge) badge.textContent = step.stepBadge;
+  if (icon) icon.textContent = step.icon;
+  if (title) title.textContent = step.title;
+  if (desc) desc.textContent = step.desc;
+  if (btnNext) btnNext.textContent = step.btnText;
+  if (btnPrev) btnPrev.style.display = currentTourStep > 0 ? 'inline-block' : 'none';
+
+  // Update dots
+  for (let i = 0; i < tourSteps.length; i++) {
+    const dot = document.getElementById(`tourDot${i}`);
+    if (dot) {
+      if (i === currentTourStep) dot.classList.add('active');
+      else dot.classList.remove('active');
+    }
+  }
+
+  // Clear previous spotlight classes
+  document.querySelectorAll('.tour-spotlight-active').forEach(el => el.classList.remove('tour-spotlight-active'));
+
+  // Spotlight active element (excluding canvas)
+  if (step.targetElementId && step.targetElementId !== 'canvas3d-container') {
+    const target = document.getElementById(step.targetElementId);
+    if (target) {
+      target.classList.add('tour-spotlight-active');
+      if (target.classList.contains('collapsed')) {
+        target.classList.remove('collapsed');
+        target.style.display = 'flex';
+      }
+    }
+  }
+}
+
+function nextTourStep() {
+  if (currentTourStep < tourSteps.length - 1) {
+    currentTourStep++;
+    renderTourStep();
+    playTone(600, 'sine', 0.08);
+  } else {
+    skipTour();
+    showToast('Tour Completed', 'Welcome aboard! Click "Test Spike" or ask Saarthi a question to begin.', 'success');
+  }
+}
+
+function prevTourStep() {
+  if (currentTourStep > 0) {
+    currentTourStep--;
+    renderTourStep();
+    playTone(480, 'sine', 0.08);
+  }
+}
+
+function skipTour() {
+  const overlay = document.getElementById('onboardingOverlay');
+  if (overlay) overlay.style.display = 'none';
+  document.querySelectorAll('.tour-spotlight-active').forEach(el => el.classList.remove('tour-spotlight-active'));
+  localStorage.setItem('saarthi_tour_completed', 'true');
+  playTone(440, 'triangle', 0.06);
+}
+
+/* Floating Camera Reset Anchor */
+function resetCameraHome() {
+  if (typeof setCameraView === 'function') {
+    setCameraView('orbit');
+  }
+  showToast('Camera Centered', '3D chamber perspective reset to default 360° orbit view.', 'info');
+  playTone(440, 'sine', 0.08);
+}
+
+/* Toast Notification System */
+function showToast(title, message, type = 'info', duration = 3800) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `saarthi-toast ${type}`;
+  const icon = type === 'warning' ? '🚨' : (type === 'success' ? '✅' : 'ℹ️');
+  toast.innerHTML = `
+    <span class="saarthi-toast-icon">${icon}</span>
+    <div class="saarthi-toast-content">
+      <div class="saarthi-toast-title">${title}</div>
+      <div class="saarthi-toast-msg">${message}</div>
+    </div>
+  `;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(40px)';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 

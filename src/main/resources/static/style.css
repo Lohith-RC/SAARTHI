@@ -831,6 +831,87 @@ input[type="range"]::-webkit-slider-thumb {
   animation-duration: 2.2s;
 }
 
+/* LIVE MIC & HANDS-FREE WAKE-WORD BUTTONS */
+.mic-controls-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.btn-mic-listen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: rgba(10, 16, 24, 0.75);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-mic-listen:hover {
+  border-color: var(--neon-emerald);
+  color: var(--neon-emerald);
+  box-shadow: 0 0 15px rgba(0, 245, 160, 0.25);
+}
+
+.btn-mic-listen.recording {
+  background: rgba(255, 51, 102, 0.18);
+  border-color: var(--neon-crimson);
+  color: var(--neon-crimson);
+  box-shadow: 0 0 20px rgba(255, 51, 102, 0.4);
+  animation: recPulse 1s infinite alternate ease-in-out;
+}
+
+@keyframes recPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.02); }
+}
+
+.btn-wake-word-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: rgba(10, 16, 24, 0.75);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.btn-wake-word-toggle:hover {
+  border-color: var(--neon-cyan);
+  color: var(--text-main);
+}
+
+.btn-wake-word-toggle.active {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 18px rgba(0, 210, 255, 0.35);
+  animation: wakePulse 2s infinite ease-in-out;
+}
+
+@keyframes wakePulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(0, 210, 255, 0.3); }
+  50% { box-shadow: 0 0 22px rgba(0, 210, 255, 0.6); }
+}
+
 /* TEXT QUERY FORM BAR */
 .text-query-form {
   display: flex;
@@ -1650,4 +1731,370 @@ select:focus {
   .panel-left, .panel-right { display: none; }
   .dock-toggle-btn { display: none; }
   .panel-bottom-telemetry { flex-wrap: wrap; }
+}
+
+/* ==========================================================================
+   ENHANCED UX MODULES: TOUR SPOTLIGHT, ENVIRONMENT BADGES, FLOATING ANCHORS
+   ========================================================================== */
+
+/* 1. Header Status Cluster & Environment Badge */
+.header-status-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.env-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(10, 16, 24, 0.75);
+  border: 1px solid rgba(255, 184, 0, 0.3);
+  padding: 0.28rem 0.65rem;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #FFD166;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.env-mode-badge .env-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #FFB800;
+  box-shadow: 0 0 8px #FFB800;
+  animation: envPulse 2s infinite ease-in-out;
+}
+
+.env-mode-badge.live {
+  border-color: rgba(0, 245, 160, 0.35);
+  color: var(--neon-emerald);
+}
+
+.env-mode-badge.live .env-dot {
+  background-color: var(--neon-emerald);
+  box-shadow: 0 0 8px var(--neon-emerald);
+}
+
+@keyframes envPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* 2. Floating Camera Reset Anchor */
+.btn-floating-camera-reset {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(10, 16, 24, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  border-radius: 24px;
+  padding: 0.42rem 0.95rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--neon-cyan);
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-floating-camera-reset:hover {
+  background: rgba(0, 210, 255, 0.18);
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* 3. Focus / Immersion Mode Banner */
+.focus-mode-banner {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: rgba(5, 8, 12, 0.9);
+  border: 1px solid var(--neon-emerald);
+  border-radius: 30px;
+  padding: 0.55rem 1.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--neon-emerald);
+  box-shadow: 0 0 25px rgba(0, 245, 160, 0.35);
+  cursor: pointer;
+  animation: bannerGlow 2.5s infinite alternate ease-in-out;
+}
+
+@keyframes bannerGlow {
+  0% { box-shadow: 0 0 15px rgba(0, 245, 160, 0.25); }
+  100% { box-shadow: 0 0 30px rgba(0, 245, 160, 0.5); }
+}
+
+/* 4. Onboarding Spotlight Tour Overlay */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto !important;
+}
+
+.spotlight-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 6, 10, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.tour-card {
+  position: relative;
+  z-index: 1000000 !important;
+  width: 90%;
+  max-width: 480px;
+  background: rgba(10, 16, 24, 0.96);
+  border: 1px solid var(--neon-emerald);
+  border-radius: 18px;
+  padding: 1.8rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 245, 160, 0.3);
+  animation: tourCardPop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto !important;
+}
+
+@keyframes tourCardPop {
+  0% { transform: scale(0.92) translateY(12px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.tour-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+  position: relative;
+  z-index: 1000001;
+}
+
+.tour-badge {
+  background: rgba(0, 245, 160, 0.15);
+  border: 1px solid var(--neon-emerald);
+  color: var(--neon-emerald);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+}
+
+.btn-tour-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.4rem;
+  position: relative;
+  z-index: 1000002 !important;
+  pointer-events: auto !important;
+  transition: color 0.2s;
+}
+
+.btn-tour-close:hover {
+  color: var(--neon-crimson);
+}
+
+.tour-icon-row {
+  font-size: 2.2rem;
+  margin-bottom: 0.6rem;
+}
+
+.tour-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.55rem;
+}
+
+.tour-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+}
+
+.tour-indicators {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 1.4rem;
+}
+
+.tour-dot {
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: all 0.3s ease;
+}
+
+.tour-dot.active {
+  background: var(--neon-emerald);
+  box-shadow: 0 0 10px var(--neon-emerald);
+}
+
+.tour-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 1000001;
+}
+
+.btn-tour-secondary {
+  background: none;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000002 !important;
+  transition: all 0.2s;
+}
+
+.btn-tour-secondary:hover {
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.tour-btn-group {
+  display: flex;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 1000001;
+}
+
+.btn-tour-prev {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-main);
+  border-radius: 8px;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000002 !important;
+}
+
+.btn-tour-primary {
+  background: linear-gradient(135deg, var(--neon-emerald), #00C880);
+  border: none;
+  color: #03060A;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 0.52rem 1.15rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000002 !important;
+  box-shadow: 0 4px 16px rgba(0, 245, 160, 0.4);
+  transition: all 0.2s;
+}
+
+.btn-tour-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 245, 160, 0.6);
+}
+
+/* 5. Spotlight Highlight Overlay for Focused Panels */
+.tour-spotlight-active {
+  z-index: 100 !important;
+  box-shadow: 0 0 0 9999px rgba(3, 6, 10, 0.75), 0 0 35px var(--neon-emerald) !important;
+  border-color: var(--neon-emerald) !important;
+}
+
+/* 6. Saarthi Toast Notifications */
+.saarthi-toast-container {
+  position: fixed;
+  bottom: 110px;
+  right: 28px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  pointer-events: none;
+}
+
+.saarthi-toast {
+  pointer-events: auto;
+  min-width: 260px;
+  max-width: 360px;
+  background: rgba(10, 16, 24, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 245, 160, 0.35);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
+}
+
+.saarthi-toast.warning {
+  border-color: var(--neon-crimson);
+}
+
+.saarthi-toast.info {
+  border-color: var(--neon-cyan);
+}
+
+.saarthi-toast-icon {
+  font-size: 1.25rem;
+}
+
+.saarthi-toast-content {
+  flex: 1;
+}
+
+.saarthi-toast-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.15rem;
+}
+
+.saarthi-toast-msg {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+@keyframes toastSlideIn {
+  0% { transform: translateX(40px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
 }

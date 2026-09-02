@@ -13,7 +13,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1")
-@CrossOrigin(origins = "*")
 public class ActuationController {
 
     private final TelemetryService telemetryService;

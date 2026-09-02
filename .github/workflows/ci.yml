@@ -1,0 +1,39 @@
+name: SAARTHI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Verify Full-Stack Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven
+        run: mvn -B clean compile --file pom.xml
+
+      - name: Run Integration & Unit Tests
+        run: mvn -B test --file pom.xml
+        env:
+          SAARTHI_DEVICE_TOKEN: SAARTHI_UUID4_MASTER_SECRET
+          SAARTHI_ENFORCE_TOKEN: "true"
+
+      - name: Verify WebGL Static Assets
+        run: |
+          test -f src/main/resources/static/index.html
+          test -f src/main/resources/static/style.css
+          test -f src/main/resources/static/app.js
+          echo "Static 3D Digital Twin HUD assets verified."

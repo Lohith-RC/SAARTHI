@@ -2,6 +2,8 @@ package com.saarthi.controller;
 
 import com.saarthi.model.TelemetryRecord;
 import com.saarthi.service.TelemetryService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,10 +15,15 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/telemetry")
-@CrossOrigin(origins = "*")
 public class TelemetryController {
 
     private final TelemetryService telemetryService;
+
+    @Value("${saarthi.device.default-token:SAARTHI_UUID4_MASTER_SECRET}")
+    private String defaultDeviceToken;
+
+    @Value("${saarthi.security.enforce-token:true}")
+    private boolean enforceToken;
 
     public TelemetryController(TelemetryService telemetryService) {
         this.telemetryService = telemetryService;
@@ -29,6 +36,16 @@ public class TelemetryController {
     @PostMapping("/push")
     public ResponseEntity<?> pushTelemetry(@RequestBody Map<String, Object> payload,
                                            @RequestHeader(value = "X-Device-Token", required = false) String token) {
+        // Enforce device token authentication if enabled
+        if (enforceToken) {
+            if (token == null || !token.trim().equals(defaultDeviceToken.trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "error", "Unauthorized",
+                        "message", "Invalid or missing X-Device-Token security header"
+                ));
+            }
+        }
+
         String deviceId = (String) payload.getOrDefault("deviceId", "SAARTHI_001");
         Double co2 = payload.containsKey("co2Ppm") ? Double.valueOf(payload.get("co2Ppm").toString()) : null;
         Double rh = payload.containsKey("humidityRh") ? Double.valueOf(payload.get("humidityRh").toString()) : null;

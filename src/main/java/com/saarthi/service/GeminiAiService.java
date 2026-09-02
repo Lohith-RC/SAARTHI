@@ -33,8 +33,14 @@ public class GeminiAiService {
     @Value("${saarthi.ai.groq.api-key:}")
     private String groqApiKey;
 
+    @Value("${saarthi.ai.groq.default-model:openai/gpt-oss-120b}")
+    private String groqDefaultModel;
+
     @Value("${saarthi.ai.gemini.api-key:}")
     private String geminiApiKey;
+
+    @Value("${saarthi.ai.gemini.default-model:gemini-3.6-flash}")
+    private String geminiDefaultModel;
 
     @Value("${saarthi.ai.openjarvis.endpoint:http://localhost:11434}")
     private String openJarvisEndpoint;
@@ -189,8 +195,8 @@ public class GeminiAiService {
     }
 
     private ChatResponse callGeminiApi(String userQuery, String systemPrompt, String apiKey, String model) {
-        String targetModel = (model != null && model.startsWith("gemini-")) ? model : "gemini-3.6-flash";
-        String[] candidateModels = new String[]{targetModel, "gemini-3.6-flash"};
+        String targetModel = (model != null && model.startsWith("gemini-")) ? model : (geminiDefaultModel != null && !geminiDefaultModel.isBlank() ? geminiDefaultModel : "gemini-3.6-flash");
+        String[] candidateModels = new String[]{targetModel, "gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"};
 
         for (String activeModel : candidateModels) {
             try {
@@ -253,57 +259,62 @@ public class GeminiAiService {
     }
 
     private ChatResponse callGroqApi(String userQuery, String systemPrompt, String apiKey, String model) {
-        try {
-            String activeModel = (model != null && (model.contains("deepseek") || model.contains("llama") || model.contains("groq")))
-                    ? model : "deepseek-r1-distill-llama-70b";
+        String activeModel = (model != null && !model.isBlank() && !model.startsWith("gemini-") && !model.contains("openjarvis"))
+                ? model : (groqDefaultModel != null && !groqDefaultModel.isBlank() ? groqDefaultModel : "openai/gpt-oss-120b");
 
-            String endpoint = "https://api.groq.com/openai/v1/chat/completions";
+        String[] candidateGroqModels = new String[]{activeModel, "openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"};
+        String endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
-            List<Map<String, String>> messages = new ArrayList<>();
-            messages.add(Map.of("role", "system", "content", systemPrompt));
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
 
-            for (Map<String, String> turn : conversationHistory) {
-                messages.add(Map.of(
-                        "role", "user".equals(turn.get("role")) ? "user" : "assistant",
-                        "content", turn.get("text")
-                ));
+        for (Map<String, String> turn : conversationHistory) {
+            messages.add(Map.of(
+                    "role", "user".equals(turn.get("role")) ? "user" : "assistant",
+                    "content", turn.get("text")
+            ));
+        }
+
+        messages.add(Map.of("role", "user", "content", userQuery));
+
+        for (String targetModel : candidateGroqModels) {
+            try {
+                Map<String, Object> payload = Map.of(
+                        "model", targetModel,
+                        "messages", messages,
+                        "temperature", 0.7,
+                        "max_tokens", 500
+                );
+
+                String requestBody = objectMapper.writeValueAsString(payload);
+
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(endpoint))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + apiKey.trim())
+                        .timeout(Duration.ofSeconds(12))
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(response.body());
+                    String rawReply = root.at("/choices/0/message/content").asText();
+
+                    String spokenReply = rawReply.replaceAll("(?s)<think>.*?</think>", "").trim();
+
+                    String emotion = extractEmotion(spokenReply, userQuery);
+                    ActuationCommand executedAction = parseAndExecuteAction(spokenReply);
+                    String cleanReply = sanitizeReply(spokenReply);
+
+                    return new ChatResponse(cleanReply, executedAction, "groq-" + targetModel, true, emotion);
+                } else {
+                    System.err.println("Groq model (" + targetModel + ") Error " + response.statusCode() + ": " + response.body());
+                }
+            } catch (Exception e) {
+                System.err.println("Exception calling Groq model " + targetModel + ": " + e.getMessage());
             }
-
-            messages.add(Map.of("role", "user", "content", userQuery));
-
-            Map<String, Object> payload = Map.of(
-                    "model", activeModel,
-                    "messages", messages,
-                    "temperature", 0.7,
-                    "max_tokens", 500
-            );
-
-            String requestBody = objectMapper.writeValueAsString(payload);
-
-            HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey.trim())
-                    .timeout(Duration.ofSeconds(12))
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                String rawReply = root.at("/choices/0/message/content").asText();
-
-                String spokenReply = rawReply.replaceAll("(?s)<think>.*?</think>", "").trim();
-
-                String emotion = extractEmotion(spokenReply, userQuery);
-                ActuationCommand executedAction = parseAndExecuteAction(spokenReply);
-                String cleanReply = sanitizeReply(spokenReply);
-
-                return new ChatResponse(cleanReply, executedAction, "groq-" + activeModel, true, emotion);
-            }
-        } catch (Exception e) {
-            System.err.println("Exception calling Groq API: " + e.getMessage());
         }
         return null;
     }
@@ -374,21 +385,42 @@ public class GeminiAiService {
         } else if (queryLower.contains("tip burn") || queryLower.contains("necrosis") || queryLower.contains("lettuce") || queryLower.contains("leaf")) {
             replyText = "Tip burn in greens is caused by calcium deficiency from low transpiration. Increase canopy air velocity and reduce nutrient EC by 0.2 mS/cm.";
             emotion = "serious";
-        } else if (queryLower.contains("fan") || queryLower.contains("ventilate") || queryLower.contains("air") || queryLower.contains("exhaust")) {
+        } else if (queryLower.contains("fan") || queryLower.contains("ventilate") || queryLower.contains("air") || queryLower.contains("exhaust") || queryLower.contains("fae")) {
             action = new ActuationCommand("FAN_01", "VENTILATE", 600, 2400, "RULE_ENGINE_COMMAND");
             telemetryService.executeActuation(action);
-            replyText = "Initiating 10-minute exhaust purge cycle. Target CO2 reduction to 750 ppm.";
+            replyText = "Initiating 10-minute exhaust purge cycle at 2,400 RPM. Target CO2 reduction to 750 ppm.";
             emotion = "thinking";
-        } else if (queryLower.contains("anniversary") || queryLower.contains("celebrat") || queryLower.contains("congrat")) {
-            replyText = "Happy Anniversary! Wishing you a wonderful celebration! Meanwhile, Chamber 1 environment is completely stable and automated.";
+        } else if (queryLower.contains("humidity") || queryLower.contains("rh") || queryLower.contains("mist") || queryLower.contains("moisture")) {
+            TelemetryRecord rec = telemetryService.getCurrentStateRecord();
+            replyText = String.format("Current humidity is %d%%. For %s fruiting, maintain between 85%% and 95%% relative humidity.",
+                    Math.round(rec.getHumidityRh()), rec.getCropType());
+            emotion = "helpful";
+        } else if (queryLower.contains("temp") || queryLower.contains("heat") || queryLower.contains("cold") || queryLower.contains("degree")) {
+            TelemetryRecord rec = telemetryService.getCurrentStateRecord();
+            replyText = String.format("Current chamber temperature is %.1f°C. Optimal range for your %s profile is 18°C to 24°C.",
+                    rec.getTempC(), rec.getCropType());
+            emotion = "helpful";
+        } else if (queryLower.contains("co2") || queryLower.contains("carbon") || queryLower.contains("ppm") || queryLower.contains("air quality")) {
+            TelemetryRecord rec = telemetryService.getCurrentStateRecord();
+            replyText = String.format("Current CO2 level is %d ppm. Target threshold is below 900 ppm during mushroom fruiting to prevent long stems.",
+                    Math.round(rec.getCo2Ppm()));
+            emotion = "helpful";
+        } else if (queryLower.contains("harvest") || queryLower.contains("yield") || queryLower.contains("pinhead") || queryLower.contains("fruiting")) {
+            replyText = "Pinheads mature into harvestable flushes in 4 to 6 days. Harvest before cap margins curl upwards to maintain maximum shelf life.";
             emotion = "happy";
-        } else if (queryLower.contains("hi") || queryLower.contains("hello") || queryLower.contains("hey")) {
+        } else if (queryLower.contains("anniversary") || queryLower.contains("celebrat") || queryLower.contains("congrat") || queryLower.contains("awesome") || queryLower.contains("great job")) {
+            replyText = "Thank you! Wishing you a wonderful celebration! Meanwhile, Chamber 1 environment is completely stable and automated.";
+            emotion = "happy";
+        } else if (queryLower.contains("who are you") || queryLower.contains("what can you do") || queryLower.contains("capabilities") || queryLower.contains("help")) {
+            replyText = "I am SAARTHI, your autonomous indoor farming copilot. I monitor CO2, humidity, and temperature in real-time, diagnose crop pathologies, and automate exhaust blowers.";
+            emotion = "helpful";
+        } else if (queryLower.contains("hi") || queryLower.contains("hello") || queryLower.contains("hey") || queryLower.contains("good morning") || queryLower.contains("good evening")) {
             replyText = "Hello! I am Saarthi, your AI agronomist copilot. All chamber parameters are stable. How can I assist you today?";
             emotion = "helpful";
         } else {
             TelemetryRecord rec = telemetryService.getCurrentStateRecord();
-            replyText = String.format("I'm monitoring Chamber 1 for you. CO2 is currently %d ppm and humidity is %d%%. What would you like me to analyze or optimize?",
-                    Math.round(rec.getCo2Ppm()), Math.round(rec.getHumidityRh()));
+            replyText = String.format("I'm monitoring Chamber 1 for you. Active Crop: %s, CO2: %d ppm, Humidity: %d%%, Temp: %.1f°C. What would you like me to analyze or optimize?",
+                    rec.getCropType(), Math.round(rec.getCo2Ppm()), Math.round(rec.getHumidityRh()), rec.getTempC());
             emotion = "helpful";
         }
 

@@ -20,6 +20,17 @@
     <canvas id="webgl-canvas"></canvas>
   </div>
 
+  <!-- FLOATING CAMERA QUICK-CENTER ANCHOR -->
+  <button id="btnFloatCamReset" class="btn-floating-camera-reset" onclick="resetCameraHome()" title="Reset Camera to Home View [1]">
+    <span class="cam-icon">🎯</span>
+    <span>Center 3D View</span>
+  </button>
+
+  <!-- FOCUS MODE EXIT PILL -->
+  <div id="focusModeBanner" class="focus-mode-banner" onclick="toggleHudFocus()" style="display:none;" title="Click or Press [H] to Restore Full HUD">
+    <span>👁️ Immersion Mode Active • Click or Press [H] to Restore HUD</span>
+  </div>
+
   <!-- FLOATING EDGE DOCK TOGGLES ("FOCUS & FLOAT" PARADIGM) -->
   <button id="btnToggleLeft" class="dock-toggle-btn dock-left" onclick="togglePanel('left')" title="Toggle 3D Controls (Key: [)">
     <span class="dock-arrow">◀</span>
@@ -49,22 +60,31 @@
       </div>
 
       <div class="header-center">
-        <div class="status-capsule" id="masterStatusCapsule">
-          <span class="capsule-pulse"></span>
-          <span id="masterStatusText">AUTONOMOUS LOOP: <strong>ONLINE</strong></span>
+        <div class="header-status-cluster">
+          <div class="status-capsule" id="masterStatusCapsule" title="Autonomous regulation loop monitoring climate parameters">
+            <span class="capsule-pulse"></span>
+            <span id="masterStatusText">AUTONOMOUS LOOP: <strong>ONLINE</strong></span>
+          </div>
+          <div class="env-mode-badge simulated" id="envModeBadge" title="Simulated Testbench: Local in-memory telemetry loop active (No live physical relays affected)">
+            <span class="env-dot"></span>
+            <span id="envModeLabel">🟡 TESTBENCH SIMULATION</span>
+          </div>
         </div>
       </div>
 
       <div class="header-right">
         <div class="view-mode-group">
-          <button class="btn-mode btn-brain-status" id="btnBrainConfig" onclick="openBrainModal()" title="Configure AI Brain & Voice">
-            <span class="brain-dot" id="brainDot"></span>
-            <span id="brainStatusText">⚡ AI: Gemini 3.6</span>
+          <button class="btn-mode btn-tour-trigger" id="btnStartTour" onclick="startOnboardingTour(true)" title="Start 3-Step Guided Walkthrough">
+            <span>❓ Quick Tour</span>
           </button>
-          <button class="btn-mode" id="btnLedgerOpen" onclick="openLedgerModal()" title="OpenJarvis Persistent 60-Day Crop Memory Ledger">📜 Memory Ledger</button>
+          <button class="btn-mode btn-brain-status" id="btnBrainConfig" onclick="openBrainModal()" title="Configure AI Brain & Voice Engine">
+            <span class="brain-dot" id="brainDot"></span>
+            <span id="brainStatusText">⚡ AI: GPT-OSS 120B</span>
+          </button>
+          <button class="btn-mode" id="btnLedgerOpen" onclick="openLedgerModal()" title="Crop Lifecycle History & Milestone Ledger">🌱 Crop Timeline</button>
           <a href="lite.html" class="btn-mode btn-lite-switch" style="text-decoration:none;" title="Switch to Minimalist AI Generator (Lite Mode)">⚡ Lite Mode</a>
           <button class="btn-mode active" id="btnMode3D" onclick="setViewMode('normal')" title="Standard Bioluminescent Lighting (Key: 1)">🌐 3D Twin</button>
-          <button class="btn-mode" id="btnModeThermal" onclick="setViewMode('thermal')" title="IR Volumetric Thermal View (Key: T)">🌡️ IR Thermal</button>
+          <button class="btn-mode" id="btnModeThermal" onclick="setViewMode('thermal')" title="Virtual IR Temperature Gradient Shader (Key: T)">🌡️ IR Thermal</button>
           <button class="btn-mode" id="btnHudFocus" onclick="toggleHudFocus()" title="Full Immersion Focus Mode (Key: H)">👁️ Focus</button>
           <button class="btn-mode" id="btnSoundToggle" onclick="toggleAudioFx()">🔊 SFX: ON</button>
         </div>
@@ -190,11 +210,17 @@
         </p>
       </div>
 
-      <!-- LIVE MIC RECORDING BUTTON -->
-      <button class="btn-mic-listen" id="btnMicRecord" onclick="toggleRealMic()" title="Toggle microphone (Key: M)">
-        <span class="mic-icon">🎙️</span>
-        <span id="btnMicText">Speak to Saarthi (Live Mic) [M]</span>
-      </button>
+      <!-- LIVE MIC & HANDS-FREE WAKE-WORD BUTTONS -->
+      <div class="mic-controls-row">
+        <button class="btn-mic-listen" id="btnMicRecord" onclick="toggleRealMic()" title="Push to Talk Microphone (Key: M)">
+          <span class="mic-icon">🎙️</span>
+          <span id="btnMicText">Push to Talk [M]</span>
+        </button>
+        <button class="btn-wake-word-toggle" id="btnWakeWordToggle" onclick="toggleWakeWordMode()" title="Continuous Ambient Mode: Say 'Hey Saarthi' hands-free">
+          <span class="wake-icon" id="wakeIcon">👂</span>
+          <span id="wakeWordStatusText">Wake-Word: OFF</span>
+        </button>
+      </div>
 
       <!-- TEXT QUERY INPUT BAR -->
       <form class="text-query-form" onsubmit="handleTextSubmit(event)">
@@ -367,10 +393,10 @@
           <div class="form-group">
             <label for="aiProviderSelect">Active Reasoning Model:</label>
             <select id="aiProviderSelect">
-              <option value="gemini-3.6-flash" selected>Google: Gemini 3.6 Flash (Fast & Intelligent)</option>
-              <option value="deepseek-r1-distill-llama-70b">Groq: DeepSeek-R1 Distill 70B</option>
+              <option value="openai/gpt-oss-120b" selected>Groq: GPT-OSS 120B (Ultra-Fast & Accurate)</option>
+              <option value="qwen/qwen3.8-27b">Groq: Qwen 3.8 27B</option>
+              <option value="gemini-3.6-flash">Google: Gemini 3.6 Flash</option>
               <option value="openjarvis-phi4-mini">OpenJarvis: Local Edge Agent (Ollama / Phi-4-Mini)</option>
-              <option value="llama-3.3-70b-versatile">Groq: Llama 3.3 70B Versatile</option>
             </select>
           </div>
 
@@ -435,10 +461,10 @@
     <div class="modal-glass-container vision-modal-container">
       <div class="modal-header">
         <div class="modal-title-group">
-          <span class="modal-icon-badge">📜</span>
+          <span class="modal-icon-badge">🌱</span>
           <div>
-            <h3>OpenJarvis Persistent Crop Ledger</h3>
-            <span class="modal-sub">Continuous 60-Day Memory Traces & Agronomy Milestone Timeline</span>
+            <h3>Crop Growth & Lifecycle Timeline</h3>
+            <span class="modal-sub">Continuous 60-Day Episodic Milestones & Agronomy Log</span>
           </div>
         </div>
         <button class="btn-close-modal" onclick="closeLedgerModal()">✕</button>
@@ -546,6 +572,35 @@
       </div>
     </div>
   </div>
+
+  <!-- ONBOARDING SPOTLIGHT WALKTHROUGH MODAL -->
+  <div class="onboarding-overlay" id="onboardingOverlay" style="display:none;">
+    <div class="spotlight-backdrop" onclick="skipTour()"></div>
+    <div class="tour-card glass-card" id="tourCard">
+      <div class="tour-header">
+        <span class="tour-badge" id="tourStepBadge">STEP 1 OF 3</span>
+        <button class="btn-tour-close" onclick="skipTour()" title="Close Tour">✕</button>
+      </div>
+      <div class="tour-icon-row" id="tourIconRow">🌿</div>
+      <h3 class="tour-title" id="tourTitle">Welcome to Project SAARTHI</h3>
+      <p class="tour-desc" id="tourDesc">This is your 3D digital twin chamber. Orbit around your grow racks, monitor bioluminescent micro-climates, and inspect your canopy.</p>
+      <div class="tour-indicators">
+        <span class="tour-dot active" id="tourDot0"></span>
+        <span class="tour-dot" id="tourDot1"></span>
+        <span class="tour-dot" id="tourDot2"></span>
+      </div>
+      <div class="tour-footer">
+        <button class="btn-tour-secondary" onclick="skipTour()">Skip</button>
+        <div class="tour-btn-group">
+          <button class="btn-tour-prev" id="btnTourPrev" onclick="prevTourStep()" style="display:none;">← Back</button>
+          <button class="btn-tour-primary" id="btnTourNext" onclick="nextTourStep()">Next Step →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div class="saarthi-toast-container" id="toastContainer"></div>
 
   <script src="app.js"></script>
 </body>
