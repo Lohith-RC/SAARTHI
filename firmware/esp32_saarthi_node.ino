@@ -14,7 +14,15 @@ const char* password = "YOUR_WIFI_PASSWORD";
 
 // Spring Boot Cloud / LAN Ingestion URL
 const char* serverUrl = "http://192.168.1.100:8080/api/v1/telemetry/push";
-const char* deviceToken = "SAARTHI_UUID4_MASTER_SECRET";
+
+// Device token injected at build time, e.g.:
+//   platformio run -DSAARTHI_DEVICE_TOKEN='"my-secret"'
+// or arduino-cli compile --build-property build.extra_flags=-DSAARTHI_DEVICE_TOKEN=\"my-secret\"
+// There is intentionally NO committed default. If missing, the node refuses to transmit.
+#ifndef SAARTHI_DEVICE_TOKEN
+#define SAARTHI_DEVICE_TOKEN ""
+#endif
+const char* deviceToken = SAARTHI_DEVICE_TOKEN;
 
 // Pinout Configuration
 #define MQ135_PIN 34       // ADC1_CH6
@@ -82,7 +90,7 @@ void loop() {
   }
 
   // Stream Telemetry to Java Spring Boot Backend
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED && deviceToken[0] != '\0') {
     HTTPClient http;
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
@@ -101,6 +109,8 @@ void loop() {
       Serial.printf("[HTTP] Error sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
     }
     http.end();
+  } else if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("[SECURITY] Device token not provided at build time. Telemetry transmission skipped.");
   }
 
   delay(2000); // 2-second telemetry loop

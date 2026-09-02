@@ -1,7 +1,12 @@
 package com.saarthi;
 
+import com.saarthi.config.SecurityConfigValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.File;
@@ -17,20 +22,33 @@ import java.util.List;
 @EnableScheduling
 public class SaarthiApplication {
 
+    private static final Logger log = LoggerFactory.getLogger(SaarthiApplication.class);
+
+    private final SecurityConfigValidator securityConfigValidator;
+
+    public SaarthiApplication(SecurityConfigValidator securityConfigValidator) {
+        this.securityConfigValidator = securityConfigValidator;
+    }
+
     public static void main(String[] args) {
         loadDotEnvIfExists();
         SpringApplication.run(SaarthiApplication.class, args);
-        System.out.println("\n=======================================================");
-        System.out.println(" 🌿 SAARTHI Java 17/21 + Spring Boot 3.x System ONLINE");
-        System.out.println(" 🌐 3D Digital Twin HUD: http://localhost:8080");
-        System.out.println(" 📊 REST API Docs:       http://localhost:8080/api/v1/telemetry/current");
-        System.out.println(" 🔌 WebSocket Endpoint:  ws://localhost:8080/ws/telemetry");
-        System.out.println(" 🗄️ H2 Database Console: http://localhost:8080/h2-console");
-        System.out.println("=======================================================\n");
+        log.info("SAARTHI Java 21 + Spring Boot 3.x system ONLINE. HUD: http://localhost:8080, REST: http://localhost:8080/api/v1/telemetry/current, WS: ws://localhost:8080/ws/telemetry");
+    }
+
+    /**
+     * Fail-fast at startup: when the application is fully ready, invoke the
+     * security configuration validator which refuses to boot on missing or
+     * default device/operator tokens.
+     */
+    @EventListener
+    public void onReady(ApplicationReadyEvent event) {
+        securityConfigValidator.validate();
     }
 
     /**
      * Reads .env file from project root and sets system properties securely if not already set.
+     * .env is dev-only: real deployments must inject secrets via environment/secret managers.
      */
     private static void loadDotEnvIfExists() {
         try {
@@ -50,10 +68,9 @@ public class SaarthiApplication {
                         System.setProperty(key, val);
                     }
                 }
-                System.out.println("🔒 [SECURITY] Loaded private environment configuration from .env");
             }
         } catch (Exception e) {
-            System.err.println("⚠️ Could not load .env file: " + e.getMessage());
+            log.warn("Could not load .env file: {}", e.getMessage());
         }
     }
 }

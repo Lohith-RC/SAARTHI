@@ -5,6 +5,13 @@
 *.pem
 *.key
 
+# Runtime Database Artifacts (H2 file DB, Postgres scratch)
+data/
+*.mv.db
+*.trace.db
+*.lock.db
+*.h2.db
+
 # Maven Build Artifacts
 target/
 pom.xml.tag

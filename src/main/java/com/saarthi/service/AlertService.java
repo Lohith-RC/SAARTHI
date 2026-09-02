@@ -1,6 +1,9 @@
 package com.saarthi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saarthi.security.SecurityAuditLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +24,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Service
 public class AlertService {
 
+    private static final Logger log = LoggerFactory.getLogger(AlertService.class);
+
     @Value("${saarthi.alert.webhook-url:}")
     private String webhookUrl;
 
@@ -31,14 +36,16 @@ public class AlertService {
     private boolean allowPrivateWebhooks;
 
     private final ObjectMapper objectMapper;
+    private final SecurityAuditLogger audit;
     private final List<Map<String, Object>> alertHistory = new CopyOnWriteArrayList<>();
     private final Map<String, Long> lastAlertTimePerKey = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    public AlertService(ObjectMapper objectMapper) {
+    public AlertService(ObjectMapper objectMapper, SecurityAuditLogger audit) {
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.audit = audit;
     }
 
     /**
@@ -69,7 +76,8 @@ public class AlertService {
             alertHistory.remove(alertHistory.size() - 1);
         }
 
-        System.out.printf("📢 [ALERT DISPATCHED] [%s] %s: %s%n", level, title, message);
+        log.info("ALERT DISPATCHED level={} title={} message={}", level, title, message);
+        audit.alertDispatched(level, title, "system");
 
         // Send to external webhook asynchronously if configured
         if (webhookUrl != null && !webhookUrl.isBlank()) {
@@ -95,20 +103,59 @@ public class AlertService {
 
             java.net.InetAddress address = java.net.InetAddress.getByName(host);
             if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
-                System.err.println("🛡️ [SSRF BLOCKED] Disallowed private/loopback webhook target: " + host);
+                log.warn("[SSRF BLOCKED] Disallowed private/loopback webhook target: {}", host);
                 return false;
             }
 
             String ip = address.getHostAddress();
-            if (ip.startsWith("169.254.") || ip.startsWith("127.") || ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("172.16.")) {
-                System.err.println("🛡️ [SSRF BLOCKED] Disallowed internal/metadata IP target: " + ip);
+            if (isPrivateIp(ip)) {
+                log.warn("[SSRF BLOCKED] Disallowed internal/metadata IP target: {}", ip);
                 return false;
             }
 
             return true;
         } catch (Exception e) {
-            System.err.println("🛡️ [SSRF BLOCKED] Webhook host resolution error: " + e.getMessage());
+            log.warn("[SSRF BLOCKED] Webhook host resolution error: {}", e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Rejects private, link-local, loopback, documentation, and legacy-local
+     * IPv4 ranges and the IPv6 loopback/ULA prefixes. Covers RFC1918, 172.16/12,
+     * 169.254/16, 127/8, 10/8, 192.168/16, 100.64/10, 198.18/15 and IPv6 ULA.
+     */
+    private static boolean isPrivateIp(String ip) {
+        if (ip == null) return true;
+        String cleanIp = ip;
+        int slash = cleanIp.indexOf('%');
+        if (slash >= 0) cleanIp = cleanIp.substring(0, slash);
+        if (cleanIp.equals("::1") || cleanIp.startsWith("fc") || cleanIp.startsWith("fd")) {
+            return true;
+        }
+        if (!cleanIp.contains(".")) return true;
+        String[] parts = cleanIp.split("\\.");
+        if (parts.length != 4) return true;
+        int a = parseIntOctet(parts[0]);
+        int b = parseIntOctet(parts[1]);
+        int c = parseIntOctet(parts[2]);
+        if (a < 0) return true;
+        if (a == 10) return true;                       // 10.0.0.0/8
+        if (a == 127) return true;                      // loopback
+        if (a == 169 && b == 254) return true;          // link-local / metadata
+        if (a == 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+        if (a == 192 && b == 168) return true;          // private
+        if (a == 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+        if (a == 198 && (b == 18 || b == 19)) return true; // benchmarking 198.18/15
+        if (a == 0) return true;                        // this-network
+        return false;
+    }
+
+    private static int parseIntOctet(String octet) {
+        try {
+            return Integer.parseInt(octet);
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 
@@ -139,17 +186,17 @@ public class AlertService {
                 httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding())
                         .thenAccept(res -> {
                             if (res.statusCode() >= 200 && res.statusCode() < 300) {
-                                System.out.println("✅ Alert webhook delivered successfully.");
+                                log.info("Alert webhook delivered successfully.");
                             } else {
-                                System.err.println("⚠️ Alert webhook responded with status: " + res.statusCode());
+                                log.warn("Alert webhook responded with status: {}", res.statusCode());
                             }
                         })
                         .exceptionally(ex -> {
-                            System.err.println("⚠️ Alert webhook dispatch error: " + ex.getMessage());
+                            log.warn("Alert webhook dispatch error: {}", ex.getMessage());
                             return null;
                         });
             } catch (Exception e) {
-                System.err.println("⚠️ Failed to dispatch webhook alert: " + e.getMessage());
+                log.warn("Failed to dispatch webhook alert: {}", e.getMessage());
             }
         }).start();
     }

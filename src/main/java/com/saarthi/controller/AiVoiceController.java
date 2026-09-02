@@ -33,10 +33,18 @@ public class AiVoiceController {
     /**
      * POST /api/v1/ai/chat
      * Executed on lightweight Virtual Threads (spring.threads.virtual.enabled=true).
+     * Requires operator authentication. AI-triggered hardware actuation is only
+     * honored when the caller is an authenticated operator and the guarded
+     * {@link com.saarthi.security.SaarthiPrincipal} is present — otherwise it is
+     * suppressed to prevent prompt-injection driven physical actions.
      */
     @PostMapping("/chat")
-    public ResponseEntity<ChatResponse> handleChatQuery(@RequestBody ChatRequest request) {
-        ChatResponse response = aiService.processAgroQuery(request);
+    public ResponseEntity<ChatResponse> handleChatQuery(
+            @RequestBody ChatRequest request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.saarthi.security.SaarthiPrincipal principal) {
+
+        boolean allowActuation = principal != null && principal.isOperator();
+        ChatResponse response = aiService.processAgroQuery(request, allowActuation);
         return ResponseEntity.ok(response);
     }
 
@@ -67,14 +75,15 @@ public class AiVoiceController {
     /**
      * POST /api/v1/ai/tts
      * Synthesizes realistic human speech using ElevenLabs API.
+     * The API key is always the server-configured one; caller-supplied keys are
+     * rejected to prevent key exfiltration via this endpoint.
      */
     @PostMapping("/tts")
     public ResponseEntity<?> synthesizeVoice(@RequestBody Map<String, String> request) {
         String text = request.getOrDefault("text", "Telemetry online.");
-        String customKey = request.get("apiKey");
         String voiceId = request.get("voiceId");
 
-        byte[] audioBytes = elevenLabsService.synthesizeVoice(text, customKey, voiceId);
+        byte[] audioBytes = elevenLabsService.synthesizeVoice(text, null, voiceId);
 
         if (audioBytes != null && audioBytes.length > 0) {
             HttpHeaders headers = new HttpHeaders();

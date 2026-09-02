@@ -1,6 +1,8 @@
 package com.saarthi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +18,8 @@ import java.util.Map;
  */
 @Service
 public class ElevenLabsVoiceService {
+
+    private static final Logger log = LoggerFactory.getLogger(ElevenLabsVoiceService.class);
 
     @Value("${saarthi.ai.elevenlabs.api-key:}")
     private String defaultApiKey;
@@ -65,11 +69,11 @@ public class ElevenLabsVoiceService {
             if (response.statusCode() == 200) {
                 return response.body();
             } else {
-                System.err.println("ElevenLabs API Response Code: " + response.statusCode() + " | Body: " + new String(response.body()));
+                log.warn("ElevenLabs API non-200 status: {}", response.statusCode());
                 return null;
             }
         } catch (Exception e) {
-            System.err.println("Error calling ElevenLabs TTS: " + e.getMessage());
+            log.warn("Error calling ElevenLabs TTS: {}", e.getMessage());
             return null;
         }
     }

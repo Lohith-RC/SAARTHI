@@ -2,6 +2,8 @@ package com.saarthi.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saarthi.model.TelemetryRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -16,24 +18,27 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class TelemetryWebSocketHandler extends TextWebSocketHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(TelemetryWebSocketHandler.class);
+
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.add(session);
-        System.out.println("🌐 [WebSocket] Client Connected: " + session.getId() + " (Total: " + sessions.size() + ")");
+        log.info("WebSocket client connected: {} (total: {})", session.getId(), sessions.size());
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.remove(session);
-        System.out.println("🔌 [WebSocket] Client Disconnected: " + session.getId() + " (Remaining: " + sessions.size() + ")");
+        log.info("WebSocket client disconnected: {} (remaining: {})", session.getId(), sessions.size());
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         sessions.remove(session);
+        log.warn("WebSocket transport error from {}: {}", session.getId(), exception.getMessage());
     }
 
     /**
@@ -51,12 +56,12 @@ public class TelemetryWebSocketHandler extends TextWebSocketHandler {
                     try {
                         session.sendMessage(message);
                     } catch (IOException e) {
-                        System.err.println("Failed to send WebSocket message to session " + session.getId() + ": " + e.getMessage());
+                        log.warn("Failed to send WebSocket message to session {}: {}", session.getId(), e.getMessage());
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error serializing telemetry for WebSocket broadcast: " + e.getMessage());
+            log.warn("Error serializing telemetry for WebSocket broadcast: {}", e.getMessage());
         }
     }
 }

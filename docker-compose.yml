@@ -1,27 +1,55 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: saarthi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saarthi
+      POSTGRES_USER: saarthi
+      POSTGRES_PASSWORD: ${SAARTHI_DB_PASSWORD:?Set SAARTHI_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saarthi -d saarthi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   saarthi-cloud:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: saarthi-gateway
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       - SERVER_PORT=8080
+      # Bind all interfaces: terminate TLS at a reverse proxy in production
+      - SERVER_ADDRESS=0.0.0.0
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/saarthi
+      - SPRING_DATASOURCE_USERNAME=saarthi
+      - SPRING_DATASOURCE_PASSWORD=${SAARTHI_DB_PASSWORD:?Set SAARTHI_DB_PASSWORD}
+      - SPRING_FLYWAY_ENABLED=true
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
-      - SAARTHI_DEVICE_TOKEN=${SAARTHI_DEVICE_TOKEN:-SAARTHI_UUID4_MASTER_SECRET}
+      # No default: must be supplied externally or container refuses to start
+      - SAARTHI_DEVICE_TOKEN=${SAARTHI_DEVICE_TOKEN:?Set SAARTHI_DEVICE_TOKEN}
+      - SAARTHI_OPERATOR_TOKEN=${SAARTHI_OPERATOR_TOKEN:?Set SAARTHI_OPERATOR_TOKEN}
       - SAARTHI_ENFORCE_TOKEN=true
       - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
-    volumes:
-      - ./data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/api/v1/telemetry/current || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 25s
+
+volumes:
+  pgdata:

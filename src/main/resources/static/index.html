@@ -410,26 +410,14 @@
         </div>
 
         <div class="form-group">
-          <label for="geminiApiKeyInput">
-            <span>Groq / Gemini API Key:</span>
-            <span class="link-get-key">⚡ Pre-Configured in Backend</span>
+          <label for="saarthiOperatorTokenInput">
+            <span>Operator Token:</span>
+            <span class="link-get-key">🔐 Required for Chat, Voice & Control</span>
           </label>
           <div class="input-with-action">
-            <input type="password" id="geminiApiKeyInput" placeholder="Enter custom key or leave empty to use backend..." autocomplete="off">
-            <button type="button" class="btn-toggle-key-visibility" onclick="toggleKeyVisibility()" title="Show/Hide Key">👁️</button>
+            <input type="password" id="saarthiOperatorTokenInput" placeholder="Paste the SAARTHI operator token..." autocomplete="off">
           </div>
-          <small class="form-hint">Backend supports Google Gemini, Groq DeepSeek-R1, and Local OpenJarvis/Ollama edge inference.</small>
-        </div>
-
-        <div class="form-group">
-          <label for="elevenLabsApiKeyInput">
-            <span>ElevenLabs Voice API Key:</span>
-            <span class="link-get-key">🎙️ Active Studio Voice</span>
-          </label>
-          <div class="input-with-action">
-            <input type="password" id="elevenLabsApiKeyInput" placeholder="sk_..." autocomplete="off">
-            <button type="button" class="btn-toggle-key-visibility" onclick="toggleElevenLabsVisibility()" title="Show/Hide Key">👁️</button>
-          </div>
+          <small class="form-hint">Provider API keys are configured server-side only and never stored in this browser.</small>
         </div>
 
         <div class="knowledge-base-badge">
@@ -449,7 +437,7 @@
       <div class="modal-footer">
         <button class="btn-modal-test" onclick="testGeminiConnection()">🧪 Test Multi-AI Pipeline</button>
         <div class="footer-actions-right">
-          <button class="btn-modal-clear" onclick="clearGeminiKey()">Reset</button>
+          <button class="btn-modal-clear" onclick="clearOperatorToken()">Reset</button>
           <button class="btn-modal-save" onclick="saveGeminiSettings()">Save & Engage Studio</button>
         </div>
       </div>

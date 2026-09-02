@@ -1,14 +1,32 @@
 package com.saarthi.model;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 /**
  * Actuation Command DTO for Hardware Relays, Exhaust Blowers & System Simulators.
  */
 public class ActuationCommand {
 
+    @NotBlank
+    @Size(max = 32)
     private String target; // 'FAN_01', 'RELAY_23', 'CROP_PROFILE', 'SIMULATION'
+
+    @NotBlank
+    @Size(max = 32)
     private String action; // 'RELAY_ON', 'RELAY_OFF', 'SET_RPM', 'SWITCH_CROP', 'SPIKE', 'RESET'
+
+    @Min(0)
+    @Max(3600)
     private Integer durationSeconds;
+
+    @Min(0)
+    @Max(3000)
     private Integer rpm;
+
+    @Size(max = 32)
     private String crop;   // 'mushroom' or 'hydro'
     private String reason;
 

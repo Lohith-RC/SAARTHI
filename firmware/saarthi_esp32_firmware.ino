@@ -27,7 +27,13 @@ const char* WIFI_SSID = "YOUR_GROW_ROOM_WIFI";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_ENDPOINT = "http://192.168.1.100:8080/api/v1/telemetry/push";
 const char* DEVICE_ID = "ESP32_NODE_01";
-const char* DEVICE_TOKEN = "SAARTHI_UUID4_MASTER_SECRET";
+
+// Device token injected at build time via -DSAARTHI_DEVICE_TOKEN='"my-secret"'.
+// There is intentionally NO committed default; a missing token disables upload.
+#ifndef SAARTHI_DEVICE_TOKEN
+#define SAARTHI_DEVICE_TOKEN ""
+#endif
+const char* DEVICE_TOKEN = SAARTHI_DEVICE_TOKEN;
 
 // --- Hardware Pins ---
 #define DHTPIN 4
@@ -184,6 +190,13 @@ void NetworkTask(void* pvParameters) {
       xSemaphoreGive(telemetryMutex);
     } else {
       vTaskDelay(pdMS_TO_TICKS(200));
+      continue;
+    }
+
+    // Refuse to upload without an injected device token (fail-safe)
+    if (DEVICE_TOKEN[0] == '\0') {
+      Serial.println("[Core 0 SECURITY] SAARTHI_DEVICE_TOKEN not set at build time. Upload disabled.");
+      vTaskDelay(pdMS_TO_TICKS(5000));
       continue;
     }
 

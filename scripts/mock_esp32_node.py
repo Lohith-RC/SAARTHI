@@ -11,12 +11,22 @@ import time
 import math
 import random
 import json
+import os
 import urllib.request
 import urllib.error
 
-ENDPOINT = "http://localhost:8080/api/v1/telemetry/push"
+ENDPOINT = os.environ.get("SAARTHI_ENDPOINT", "http://localhost:8080/api/v1/telemetry/push")
 DEVICE_ID = "ESP32_NODE_01"
-DEVICE_TOKEN = "SAARTHI_UUID4_MASTER_SECRET"
+
+# Device token MUST come from the environment; there is no committed default.
+DEVICE_TOKEN = os.environ.get("SAARTHI_DEVICE_TOKEN", "").strip()
+if not DEVICE_TOKEN:
+    raise SystemExit(
+        "SAARTHI_DEVICE_TOKEN is not set. Refusing to simulate a node without a "
+        "valid device token. Export it before running, e.g.:\n"
+        "  set SAARTHI_DEVICE_TOKEN=<your-device-token>\n"
+        "  python scripts/mock_esp32_node.py"
+    )
 
 def run_mock_node():
     print("=" * 65)

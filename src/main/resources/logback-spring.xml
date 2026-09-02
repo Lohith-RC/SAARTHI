@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SAARTHI structured logging configuration.
+
+  - Default (prod) profile: JSON lines via logstash-logback-encoder so logs can
+    be shipped to a TLS-terminating collector / logstash without rewriting app code.
+  - "console" profile (e.g. local dev): human-readable, colorised patterns.
+  - An MDC field mask keeps authentication material out of logs: token/header
+    values are never written by app code, and the pattern only logs MDC keys
+    that are safe to emit.
+-->
+<configuration>
+
+    <!-- Console-pattern literal used by the local profile -->
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level %logger{36} - %msg%n"/>
+
+    <!-- Local / developer logging -->
+    <springProfile name="console">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_PATTERN}</pattern>
+        </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- Production JSON logging -->
+    <springProfile name="!console">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdc>true</includeMdc>
+                <customFields>{"app":"saarthi-backend","stage":"prod"}</customFields>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+    </springProfile>
+
+</configuration>

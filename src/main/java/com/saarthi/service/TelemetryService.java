@@ -6,6 +6,8 @@ import com.saarthi.model.TelemetryRecord;
 import com.saarthi.repository.TelemetryRepository;
 import com.saarthi.websocket.TelemetryWebSocketHandler;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 @Service
 public class TelemetryService {
+
+    private static final Logger log = LoggerFactory.getLogger(TelemetryService.class);
 
     private final TelemetryRepository telemetryRepository;
     private final TelemetryWebSocketHandler webSocketHandler;
@@ -212,7 +216,7 @@ public class TelemetryService {
     public void runDeadMansWatchdog() {
         long secondsSinceLastPing = Instant.now().getEpochSecond() - lastHeartbeat;
         if (secondsSinceLastPing > 180) {
-            System.err.println("🚨 [WATCHDOG ALERT] No telemetry ping from " + currentDeviceId + " for " + secondsSinceLastPing + "s! Alert triggered.");
+            log.warn("[WATCHDOG ALERT] No telemetry ping from {} for {}s. Alert triggered.", currentDeviceId, secondsSinceLastPing);
             alertService.triggerAlert("WATCHDOG_TIMEOUT", "WARNING", "Hardware Node Offline",
                     String.format("No telemetry ping from node %s for %d seconds. Check Wi-Fi or power.", currentDeviceId, secondsSinceLastPing),
                     Map.of("deviceId", currentDeviceId, "elapsedSeconds", secondsSinceLastPing));
@@ -230,7 +234,7 @@ public class TelemetryService {
         long cutoffEpoch = Instant.now().getEpochSecond() - (7 * 86400L); // 7 days
         int deleted = telemetryRepository.pruneRecordsOlderThan(cutoffEpoch);
         if (deleted > 0) {
-            System.out.printf("🧹 [DATA RETENTION] Pruned %d historical records older than 7 days.%n", deleted);
+            log.info("[DATA RETENTION] Pruned {} historical records older than 7 days.", deleted);
         }
         return deleted;
     }

@@ -30,14 +30,35 @@ const history = {
   fan: [1400, 1420, 1420, 1420, 1440, 1420, 1420, 1400, 1420, 1420, 1420, 1440, 1420, 1420, 1420, 1420, 1420, 1420, 1420, 1420]
 };
 
-// Gemini & Groq AI Brain Configuration & State
+// AI Brain Configuration & State — API keys live server-side only.
+// No provider keys are stored or transmitted from the browser.
 const aiBrainConfig = {
-  apiKey: localStorage.getItem('saarthi_ai_api_key') || '',
-  elevenLabsKey: localStorage.getItem('saarthi_elevenlabs_key') || '',
   model: localStorage.getItem('saarthi_ai_model') || 'openai/gpt-oss-120b',
   voiceEngine: localStorage.getItem('saarthi_voice_engine') || 'elevenlabs',
-  language: 'en-US'
+  language: 'en-US',
+  operatorToken: sessionStorage.getItem('saarthi_operator_token') || ''
 };
+
+// Attach X-Operator-Token to operator-gated API calls when one has been entered.
+function getOperatorHeaders(extra = {}) {
+  const headers = { 'Content-Type': 'application/json', ...extra };
+  if (aiBrainConfig.operatorToken) {
+    headers['X-Operator-Token'] = aiBrainConfig.operatorToken;
+  }
+  return headers;
+}
+
+// Prompt the operator once (per tab session) for the operator token.
+function ensureOperatorToken() {
+  if (aiBrainConfig.operatorToken) return true;
+  const token = prompt('Enter the SAARTHI operator token to enable chat, voice, and control:', '');
+  if (token) {
+    aiBrainConfig.operatorToken = token.trim();
+    sessionStorage.setItem('saarthi_operator_token', aiBrainConfig.operatorToken);
+    return true;
+  }
+  return false;
+}
 
 let currentOrbState = 'idle'; // 'idle' | 'listening' | 'thinking' | 'speaking'
 let audioCtx = null;
@@ -1046,13 +1067,10 @@ function initBrainConfig() {
   const aiTagText = document.getElementById('aiTagText');
   const aiDot = document.getElementById('aiDot');
 
-  const apiKeyInput = document.getElementById('geminiApiKeyInput');
-  const elevenLabsInput = document.getElementById('elevenLabsApiKeyInput');
+  // API-key inputs are removed: provider keys live server-side only.
   const modelSelect = document.getElementById('aiProviderSelect');
   const voiceSelect = document.getElementById('voiceEngineSelect');
 
-  if (apiKeyInput) apiKeyInput.value = aiBrainConfig.apiKey;
-  if (elevenLabsInput) elevenLabsInput.value = aiBrainConfig.elevenLabsKey;
   if (modelSelect) modelSelect.value = aiBrainConfig.model;
   if (voiceSelect) voiceSelect.value = aiBrainConfig.voiceEngine;
 
@@ -1086,33 +1104,30 @@ function closeBrainModalOnBackdrop(e) {
   if (e.target.id === 'brainModal') closeBrainModal();
 }
 
-function toggleKeyVisibility() {
-  const input = document.getElementById('geminiApiKeyInput');
-  if (input) {
-    input.type = input.type === 'password' ? 'text' : 'password';
-  }
-}
-
-function toggleElevenLabsVisibility() {
-  const input = document.getElementById('elevenLabsApiKeyInput');
-  if (input) {
-    input.type = input.type === 'password' ? 'text' : 'password';
-  }
+function clearOperatorToken() {
+  aiBrainConfig.operatorToken = '';
+  sessionStorage.removeItem('saarthi_operator_token');
+  const input = document.getElementById('saarthiOperatorTokenInput');
+  if (input) input.value = '';
+  initBrainConfig();
+  const feedback = document.getElementById('testFeedbackBox');
+  if (feedback) feedback.style.display = 'none';
+  playTone(300, 'sine', 0.1);
 }
 
 function saveGeminiSettings() {
-  const apiKey = document.getElementById('geminiApiKeyInput').value.trim();
-  const elevenKey = document.getElementById('elevenLabsApiKeyInput').value.trim();
   const model = document.getElementById('aiProviderSelect').value;
   const voiceEngine = document.getElementById('voiceEngineSelect').value;
+  const tokenInput = document.getElementById('saarthiOperatorTokenInput');
+  const token = (tokenInput && tokenInput.value.trim()) || aiBrainConfig.operatorToken;
 
-  aiBrainConfig.apiKey = apiKey;
-  aiBrainConfig.elevenLabsKey = elevenKey;
   aiBrainConfig.model = model;
   aiBrainConfig.voiceEngine = voiceEngine;
+  if (token) {
+    aiBrainConfig.operatorToken = token;
+    sessionStorage.setItem('saarthi_operator_token', token);
+  }
 
-  localStorage.setItem('saarthi_ai_api_key', apiKey);
-  localStorage.setItem('saarthi_elevenlabs_key', elevenKey);
   localStorage.setItem('saarthi_ai_model', model);
   localStorage.setItem('saarthi_voice_engine', voiceEngine);
 
@@ -1123,18 +1138,7 @@ function saveGeminiSettings() {
   speakSaarthi(`AI Studio engaged with ${model.includes('deepseek') ? 'DeepSeek-R1 reasoning' : 'Gemini 2.0'} and ${voiceEngine === 'elevenlabs' ? 'ElevenLabs studio voice' : 'browser speech'}. Ready for agronomy operations.`);
 }
 
-function clearGeminiKey() {
-  aiBrainConfig.apiKey = '';
-  localStorage.removeItem('saarthi_ai_api_key');
-  document.getElementById('geminiApiKeyInput').value = '';
-  initBrainConfig();
-  const feedback = document.getElementById('testFeedbackBox');
-  if (feedback) feedback.style.display = 'none';
-  playTone(300, 'sine', 0.1);
-}
-
 async function testGeminiConnection() {
-  const apiKey = document.getElementById('geminiApiKeyInput').value.trim();
   const model = document.getElementById('aiProviderSelect').value;
   const feedback = document.getElementById('testFeedbackBox');
   const icon = document.getElementById('testFeedbackIcon');
@@ -1148,10 +1152,9 @@ async function testGeminiConnection() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/v1/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getOperatorHeaders(),
       body: JSON.stringify({
         query: "Connection test. Verify status.",
-        apiKey: apiKey,
         model: model,
         language: aiBrainConfig.language
       })
@@ -1382,12 +1385,12 @@ async function processUserQuery(queryText) {
 
   // Try Java Spring Boot REST API Endpoint first (Supports Groq DeepSeek-R1 & Gemini 2.0)
   try {
+    if (!ensureOperatorToken()) throw new Error('Operator token required for chat');
     const res = await fetch(`${getApiBaseUrl()}/api/v1/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getOperatorHeaders(),
       body: JSON.stringify({
         query: queryText,
-        apiKey: aiBrainConfig.apiKey,
         model: aiBrainConfig.model,
         language: aiBrainConfig.language
       })
@@ -1480,12 +1483,12 @@ async function speakSaarthi(text) {
       }
 
       setOrbState('thinking');
+      if (!ensureOperatorToken()) throw new Error('Operator token required for TTS');
       const res = await fetch(`${getApiBaseUrl()}/api/v1/ai/tts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getOperatorHeaders(),
         body: JSON.stringify({
-          text: text,
-          apiKey: aiBrainConfig.elevenLabsKey
+          text: text
         })
       });
 

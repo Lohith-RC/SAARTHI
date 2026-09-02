@@ -15,10 +15,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (Eclipse Temurin)
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK 21 (Eclipse Temurin)
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
@@ -28,8 +33,12 @@ jobs:
       - name: Run Integration & Unit Tests
         run: mvn -B test --file pom.xml
         env:
-          SAARTHI_DEVICE_TOKEN: SAARTHI_UUID4_MASTER_SECRET
+          SAARTHI_DEVICE_TOKEN: test-device-token-abc123
+          SAARTHI_OPERATOR_TOKEN: test-operator-token-def456
           SAARTHI_ENFORCE_TOKEN: "true"
+
+      - name: OWASP Dependency Vulnerability Scan
+        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -Dformat=JSON,HTML --file pom.xml
 
       - name: Verify WebGL Static Assets
         run: |

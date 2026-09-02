@@ -5,7 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.saarthi.model.ActuationCommand;
 import com.saarthi.model.AiChatModels.ChatRequest;
 import com.saarthi.model.AiChatModels.ChatResponse;
+import com.saarthi.model.LifecycleEvent;
 import com.saarthi.model.TelemetryRecord;
+import com.saarthi.repository.LifecycleEventRepository;
+import com.saarthi.security.SecurityAuditLogger;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -42,10 +48,17 @@ public class GeminiAiService {
     @Value("${saarthi.ai.gemini.default-model:gemini-3.6-flash}")
     private String geminiDefaultModel;
 
+    @Value("${saarthi.ai.customer-api-keys-enabled:false}")
+    private boolean customerApiKeysEnabled;
+
     @Value("${saarthi.ai.openjarvis.endpoint:http://localhost:11434}")
     private String openJarvisEndpoint;
 
+    private static final Logger log = LoggerFactory.getLogger(GeminiAiService.class);
+
     private final TelemetryService telemetryService;
+    private final LifecycleEventRepository lifecycleEventRepository;
+    private final SecurityAuditLogger audit;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -61,27 +74,58 @@ public class GeminiAiService {
     private static final Pattern ACTION_PATTERN = Pattern.compile("\\[ACTION:(.*?)\\]");
     private static final Pattern EMOTION_PATTERN = Pattern.compile("\\[EMOTION:(.*?)\\]");
 
-    public GeminiAiService(TelemetryService telemetryService) {
+    public GeminiAiService(TelemetryService telemetryService,
+                           LifecycleEventRepository lifecycleEventRepository,
+                           SecurityAuditLogger audit) {
         this.telemetryService = telemetryService;
-        initDefaultCropLifecycleLedger();
+        this.lifecycleEventRepository = lifecycleEventRepository;
+        this.audit = audit;
     }
 
+    @PostConstruct
     private void initDefaultCropLifecycleLedger() {
-        addLifecycleEvent(1, "SUBSTRATE_INOCULATION", "Spawn bags inoculated with Pleurotus ostreatus. Darkness maintained, incubation at 24°C.", "OPTIMAL");
-        addLifecycleEvent(7, "MYCELIUM_COLONIZATION", "Mycelium coverage at 65%. Zero contaminant patches identified.", "OPTIMAL");
-        addLifecycleEvent(14, "PINHEAD_INDUCTION", "Chamber transferred to fruiting parameters. CO2 ramped below 900 ppm, RH >92%.", "OPTIMAL");
-        addLifecycleEvent(18, "CANOPY_OPTIMIZATION", "Primordia clusters expanding evenly across Rack 1. Fresh air exchange duty set to 45%.", "OPTIMAL");
+        try {
+            if (lifecycleEventRepository.count() == 0) {
+                addLifecycleEvent(1, "SUBSTRATE_INOCULATION", "Spawn bags inoculated with Pleurotus ostreatus. Darkness maintained, incubation at 24°C.", "OPTIMAL");
+                addLifecycleEvent(7, "MYCELIUM_COLONIZATION", "Mycelium coverage at 65%. Zero contaminant patches identified.", "OPTIMAL");
+                addLifecycleEvent(14, "PINHEAD_INDUCTION", "Chamber transferred to fruiting parameters. CO2 ramped below 900 ppm, RH >92%.", "OPTIMAL");
+                addLifecycleEvent(18, "CANOPY_OPTIMIZATION", "Primordia clusters expanding evenly across Rack 1. Fresh air exchange duty set to 45%.", "OPTIMAL");
+            } else {
+                reloadLedgerFromDatabase();
+            }
+        } catch (Exception e) {
+            log.warn("Could not initialize crop lifecycle ledger: {}", e.getMessage());
+        }
+    }
+
+    private void reloadLedgerFromDatabase() {
+        cropLifecycleLedger.clear();
+        for (LifecycleEvent event : lifecycleEventRepository.findAllByOrderByCropDayAsc()) {
+            cropLifecycleLedger.add(toLedgerMap(event));
+        }
+    }
+
+    private static Map<String, Object> toLedgerMap(LifecycleEvent event) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", event.getId() == null ? UUID.randomUUID().toString() : event.getId().toString());
+        map.put("day", event.getCropDay());
+        map.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
+        map.put("type", event.getEventType());
+        map.put("description", event.getDescription());
+        map.put("healthStatus", event.getHealthStatus());
+        return map;
     }
 
     public void addLifecycleEvent(int cropDay, String eventType, String description, String healthStatus) {
-        Map<String, Object> event = new HashMap<>();
-        event.put("id", UUID.randomUUID().toString());
-        event.put("day", cropDay);
-        event.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
-        event.put("type", eventType);
-        event.put("description", description);
-        event.put("healthStatus", healthStatus);
-        cropLifecycleLedger.add(event);
+        LifecycleEvent persisted;
+        try {
+            persisted = lifecycleEventRepository.save(new LifecycleEvent(cropDay, eventType, description, healthStatus));
+        } catch (Exception e) {
+            log.warn("Could not persist lifecycle event: {}", e.getMessage());
+            persisted = new LifecycleEvent(cropDay, eventType, description, healthStatus);
+            persisted.setId(System.nanoTime());
+        }
+        cropLifecycleLedger.add(toLedgerMap(persisted));
     }
 
     public List<Map<String, Object>> getCropLifecycleLedger() {
@@ -89,12 +133,25 @@ public class GeminiAiService {
     }
 
     public ChatResponse processAgroQuery(ChatRequest request) {
+        return processAgroQuery(request, false);
+    }
+
+    /**
+     * Process an agro query. {@code allowActuation} is a deliberate guardrail:
+     * when {@code false}, any {at}ACTION directive parsed from model output is
+     * ignored and NOT executed, preventing prompt-injection driven hardware
+     * actuation even from authenticated operators.
+     */
+    public ChatResponse processAgroQuery(ChatRequest request, boolean allowActuation) {
         if (request == null || request.getQuery() == null || request.getQuery().trim().isEmpty()) {
             return ChatResponse.error("Query cannot be empty.");
         }
 
         String userQuery = request.getQuery().trim();
-        String customApiKey = request.getApiKey();
+        // Client-supplied API keys are NOT used unless explicitly enabled; the
+        // server's own configured keys are always preferred (prevents BYOK abuse
+        // and accidental key leakage from browser clients).
+        String customApiKey = customerApiKeysEnabled ? request.getApiKey() : null;
         String requestedModel = request.getModel();
 
         TelemetryRecord current = telemetryService.getCurrentStateRecord();
@@ -102,7 +159,7 @@ public class GeminiAiService {
 
         // 1. Check if user selected OpenJarvis / Local Edge model
         if (requestedModel != null && (requestedModel.contains("openjarvis") || requestedModel.contains("ollama") || requestedModel.contains("local"))) {
-            ChatResponse localJarvisResp = callOpenJarvisLocal(userQuery, systemPrompt, requestedModel);
+            ChatResponse localJarvisResp = callOpenJarvisLocal(userQuery, systemPrompt, requestedModel, allowActuation);
             if (localJarvisResp != null && localJarvisResp.isSuccess()) {
                 recordConversationTurn(userQuery, localJarvisResp.getReplyText());
                 return localJarvisResp;
@@ -112,7 +169,7 @@ public class GeminiAiService {
         // 2. Try Google Gemini API with gemini-3.6-flash (Primary Generative Engine)
         String activeGeminiKey = (customApiKey != null && !customApiKey.startsWith("gsk_") && customApiKey.length() > 10) ? customApiKey : geminiApiKey;
         if (activeGeminiKey != null && !activeGeminiKey.isBlank() && activeGeminiKey.length() > 10) {
-            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, activeGeminiKey, requestedModel);
+            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, activeGeminiKey, requestedModel, allowActuation);
             if (geminiResponse != null && geminiResponse.isSuccess()) {
                 recordConversationTurn(userQuery, geminiResponse.getReplyText());
                 return geminiResponse;
@@ -122,7 +179,7 @@ public class GeminiAiService {
         // 3. Try Groq (DeepSeek-R1 / Llama 3.3)
         String activeGroqKey = (customApiKey != null && customApiKey.startsWith("gsk_")) ? customApiKey : groqApiKey;
         if (activeGroqKey != null && !activeGroqKey.isBlank()) {
-            ChatResponse groqResponse = callGroqApi(userQuery, systemPrompt, activeGroqKey, requestedModel);
+            ChatResponse groqResponse = callGroqApi(userQuery, systemPrompt, activeGroqKey, requestedModel, allowActuation);
             if (groqResponse != null && groqResponse.isSuccess()) {
                 recordConversationTurn(userQuery, groqResponse.getReplyText());
                 return groqResponse;
@@ -130,14 +187,14 @@ public class GeminiAiService {
         }
 
         // 4. Try Local OpenJarvis / Ollama fallback before static heuristics
-        ChatResponse localJarvisFallback = callOpenJarvisLocal(userQuery, systemPrompt, "llama3.2:3b");
+        ChatResponse localJarvisFallback = callOpenJarvisLocal(userQuery, systemPrompt, "llama3.2:3b", allowActuation);
         if (localJarvisFallback != null && localJarvisFallback.isSuccess()) {
             recordConversationTurn(userQuery, localJarvisFallback.getReplyText());
             return localJarvisFallback;
         }
 
         // 5. Fallback to Dynamic Natural Agronomy Core
-        ChatResponse localResponse = processLocalAgronomyQuery(userQuery);
+        ChatResponse localResponse = processLocalAgronomyQuery(userQuery, allowActuation);
         recordConversationTurn(userQuery, localResponse.getReplyText());
         return localResponse;
     }
@@ -153,7 +210,7 @@ public class GeminiAiService {
     /**
      * OpenJarvis / Local Ollama Edge Inference Engine (Offline-First Autonomy)
      */
-    private ChatResponse callOpenJarvisLocal(String userQuery, String systemPrompt, String model) {
+    private ChatResponse callOpenJarvisLocal(String userQuery, String systemPrompt, String model, boolean allowActuation) {
         try {
             String activeModel = (model != null && !model.isBlank() && !model.contains("openjarvis")) ? model : "phi4-mini";
             String endpoint = openJarvisEndpoint.trim() + "/api/generate";
@@ -182,7 +239,7 @@ public class GeminiAiService {
 
                 if (!rawReply.isBlank()) {
                     String emotion = extractEmotion(rawReply, userQuery);
-                    ActuationCommand executedAction = parseAndExecuteAction(rawReply);
+                    ActuationCommand executedAction = parseAndExecuteAction(rawReply, allowActuation);
                     String cleanReply = sanitizeReply(rawReply);
 
                     return new ChatResponse(cleanReply, executedAction, "openjarvis-" + activeModel, true, emotion);
@@ -194,7 +251,7 @@ public class GeminiAiService {
         return null;
     }
 
-    private ChatResponse callGeminiApi(String userQuery, String systemPrompt, String apiKey, String model) {
+    private ChatResponse callGeminiApi(String userQuery, String systemPrompt, String apiKey, String model, boolean allowActuation) {
         String targetModel = (model != null && model.startsWith("gemini-")) ? model : (geminiDefaultModel != null && !geminiDefaultModel.isBlank() ? geminiDefaultModel : "gemini-3.6-flash");
         String[] candidateModels = new String[]{targetModel, "gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"};
 
@@ -243,22 +300,22 @@ public class GeminiAiService {
 
                     if (!rawReply.isBlank()) {
                         String emotion = extractEmotion(rawReply, userQuery);
-                        ActuationCommand executedAction = parseAndExecuteAction(rawReply);
+                        ActuationCommand executedAction = parseAndExecuteAction(rawReply, allowActuation);
                         String cleanReply = sanitizeReply(rawReply);
 
                         return new ChatResponse(cleanReply, executedAction, activeModel, true, emotion);
                     }
                 } else {
-                    System.err.println("Gemini API (" + activeModel + ") Error " + response.statusCode() + ": " + response.body());
+                    log.warn("Gemini API ({}) non-200 status: {}", activeModel, response.statusCode());
                 }
             } catch (Exception e) {
-                System.err.println("Exception calling Gemini model " + activeModel + ": " + e.getMessage());
+                log.warn("Exception calling Gemini model {}: {}", activeModel, e.getMessage());
             }
         }
         return null;
     }
 
-    private ChatResponse callGroqApi(String userQuery, String systemPrompt, String apiKey, String model) {
+    private ChatResponse callGroqApi(String userQuery, String systemPrompt, String apiKey, String model, boolean allowActuation) {
         String activeModel = (model != null && !model.isBlank() && !model.startsWith("gemini-") && !model.contains("openjarvis"))
                 ? model : (groqDefaultModel != null && !groqDefaultModel.isBlank() ? groqDefaultModel : "openai/gpt-oss-120b");
 
@@ -305,15 +362,15 @@ public class GeminiAiService {
                     String spokenReply = rawReply.replaceAll("(?s)<think>.*?</think>", "").trim();
 
                     String emotion = extractEmotion(spokenReply, userQuery);
-                    ActuationCommand executedAction = parseAndExecuteAction(spokenReply);
+                    ActuationCommand executedAction = parseAndExecuteAction(spokenReply, allowActuation);
                     String cleanReply = sanitizeReply(spokenReply);
 
                     return new ChatResponse(cleanReply, executedAction, "groq-" + targetModel, true, emotion);
                 } else {
-                    System.err.println("Groq model (" + targetModel + ") Error " + response.statusCode() + ": " + response.body());
+                    log.warn("Groq model ({}) non-200 status: {}", targetModel, response.statusCode());
                 }
             } catch (Exception e) {
-                System.err.println("Exception calling Groq model " + targetModel + ": " + e.getMessage());
+                log.warn("Exception calling Groq model {}: {}", targetModel, e.getMessage());
             }
         }
         return null;
@@ -342,7 +399,7 @@ public class GeminiAiService {
                   .trim();
     }
 
-    private ActuationCommand parseAndExecuteAction(String rawReply) {
+    private ActuationCommand parseAndExecuteAction(String rawReply, boolean allowActuation) {
         Matcher matcher = ACTION_PATTERN.matcher(rawReply);
         if (matcher.find()) {
             String actionJson = matcher.group(1);
@@ -362,18 +419,26 @@ public class GeminiAiService {
                     cmd = new ActuationCommand("SIMULATION", "RESET", null, null, "AI_VOICE_COMMAND");
                 }
 
-                if (cmd != null) {
+                if (cmd != null && allowActuation) {
                     telemetryService.executeActuation(cmd);
                     return cmd;
+                } else if (cmd != null) {
+                    log.warn("[SECURITY] AI-triggered actuation suppressed: actuation is disabled for this context.");
+                    audit.aiActuationSuppressed("system");
+                    return null;
                 }
             } catch (Exception e) {
-                System.err.println("Could not parse AI action JSON: " + e.getMessage());
+                log.warn("Could not parse AI action JSON: {}", e.getMessage());
             }
         }
         return null;
     }
 
     public ChatResponse processLocalAgronomyQuery(String userQuery) {
+        return processLocalAgronomyQuery(userQuery, false);
+    }
+
+    public ChatResponse processLocalAgronomyQuery(String userQuery, boolean allowActuation) {
         String queryLower = userQuery.toLowerCase();
         String replyText;
         String emotion = "helpful";
@@ -387,7 +452,13 @@ public class GeminiAiService {
             emotion = "serious";
         } else if (queryLower.contains("fan") || queryLower.contains("ventilate") || queryLower.contains("air") || queryLower.contains("exhaust") || queryLower.contains("fae")) {
             action = new ActuationCommand("FAN_01", "VENTILATE", 600, 2400, "RULE_ENGINE_COMMAND");
-            telemetryService.executeActuation(action);
+            if (allowActuation) {
+                telemetryService.executeActuation(action);
+            } else {
+                log.warn("[SECURITY] AI-triggered fan actuation suppressed (actuation disabled).");
+                audit.aiActuationSuppressed("RULE_ENGINE");
+                action = null;
+            }
             replyText = "Initiating 10-minute exhaust purge cycle at 2,400 RPM. Target CO2 reduction to 750 ppm.";
             emotion = "thinking";
         } else if (queryLower.contains("humidity") || queryLower.contains("rh") || queryLower.contains("mist") || queryLower.contains("moisture")) {

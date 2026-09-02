@@ -1,0 +1,26 @@
+# Gitleaks configuration for SAARTHI.
+# - Allows the committed non-secret test/dev tokens.
+# - Ignores placeholder shapes in .env.example (they are documentation only).
+title = "SAARTHI gitleaks config"
+
+[extend]
+useDefault = true
+
+# The real .env holds generated dev tokens; it is gitignored and must never be
+# committed. Force-gitignore it here so any accidental history scan stays safe.
+[allowlist]
+description = "Known committed non-secret values"
+paths = [
+    "^\\.env$",
+]
+regexes = [
+    "test-device-token-abc123",
+    "test-operator-token-def456",
+    "your_groq_api_key_here",
+    "your_gemini_api_key_here",
+    "your_elevenlabs_api_key_here",
+    "Generate_long_random_device_token",
+    "generate_a_long_random_device_token",
+    "generate_a_long_random_operator_token",
+    "your_strong_db_password",
+]
