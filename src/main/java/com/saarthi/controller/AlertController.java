@@ -1,5 +1,6 @@
 package com.saarthi.controller;
 
+import com.saarthi.model.AlertEvent;
 import com.saarthi.service.AlertService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,15 @@ public class AlertController {
     @GetMapping("/recent")
     public ResponseEntity<List<Map<String, Object>>> getRecentAlerts() {
         return ResponseEntity.ok(alertService.getRecentAlerts());
+    }
+
+    /**
+     * GET /api/v1/alerts/history?limit=100
+     * Persistent alert history from the database (survives restarts).
+     */
+    @GetMapping("/history")
+    public ResponseEntity<List<AlertEvent>> getAlertHistory(@RequestParam(defaultValue = "100") int limit) {
+        return ResponseEntity.ok(alertService.getAlertHistory(limit));
     }
 
     /**

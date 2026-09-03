@@ -12,13 +12,23 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Spring WebSocket Text Handler streaming real-time telemetry updates to Three.js HUD clients.
  * Authenticates incoming connections against configured device/operator tokens.
+ *
+ * <p>Wire format (additive, fully backwards compatible):</p>
+ * <ul>
+ *   <li>Raw {@code TelemetryRecord} JSON (legacy, default chamber only)</li>
+ *   <li>{@code {"type":"CHAMBER_UPDATE","deviceId":...,"record":{...}}} for any chamber</li>
+ *   <li>{@code {"type":"FLEET_SNAPSHOT","chambers":[...]}} sent once on connect</li>
+ * </ul>
  */
 @Component
 public class TelemetryWebSocketHandler extends TextWebSocketHandler {
@@ -29,11 +39,18 @@ public class TelemetryWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final SecurityConfigValidator validator;
 
+    /** Registered by TelemetryService after startup; serves the on-connect fleet snapshot. */
+    private volatile Supplier<List<TelemetryRecord>> fleetSnapshotSupplier;
+
     @Value("${saarthi.security.enforce-token:true}")
     private boolean enforceToken;
 
     public TelemetryWebSocketHandler(SecurityConfigValidator validator) {
         this.validator = validator;
+    }
+
+    public void setFleetSnapshotSupplier(Supplier<List<TelemetryRecord>> supplier) {
+        this.fleetSnapshotSupplier = supplier;
     }
 
     @Override
@@ -49,6 +66,22 @@ public class TelemetryWebSocketHandler extends TextWebSocketHandler {
         }
         sessions.add(session);
         log.info("WebSocket client connected and authenticated: {} (total: {})", session.getId(), sessions.size());
+
+        // Push the full fleet snapshot to the freshly connected client.
+        Supplier<List<TelemetryRecord>> supplier = fleetSnapshotSupplier;
+        if (supplier != null) {
+            try {
+                List<TelemetryRecord> snapshot = supplier.get();
+                if (snapshot != null && !snapshot.isEmpty()) {
+                    Map<String, Object> message = new LinkedHashMap<>();
+                    message.put("type", "FLEET_SNAPSHOT");
+                    message.put("chambers", snapshot);
+                    sendToSession(session, objectMapper.writeValueAsString(message));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to send fleet snapshot to session {}: {}", session.getId(), e.getMessage());
+            }
+        }
     }
 
     private String extractToken(WebSocketSession session) {
@@ -91,25 +124,49 @@ public class TelemetryWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * Broadcast live telemetry record to all connected WebGL HUD clients.
+     * Legacy raw-format channel (kept for the default chamber).
      */
     public void broadcastTelemetry(TelemetryRecord record) {
         if (sessions.isEmpty()) return;
-
         try {
-            String jsonPayload = objectMapper.writeValueAsString(record);
-            TextMessage message = new TextMessage(jsonPayload);
-
-            for (WebSocketSession session : sessions) {
-                if (session.isOpen()) {
-                    try {
-                        session.sendMessage(message);
-                    } catch (IOException e) {
-                        log.warn("Failed to send WebSocket message to session {}: {}", session.getId(), e.getMessage());
-                    }
-                }
-            }
+            broadcastJson(objectMapper.writeValueAsString(record));
         } catch (Exception e) {
             log.warn("Error serializing telemetry for WebSocket broadcast: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Typed fleet message for a single chamber update: {@code {"type":"CHAMBER_UPDATE",...}}.
+     */
+    public void broadcastChamberUpdate(String deviceId, TelemetryRecord record) {
+        if (sessions.isEmpty()) return;
+        try {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("type", "CHAMBER_UPDATE");
+            message.put("deviceId", deviceId);
+            message.put("record", record);
+            broadcastJson(objectMapper.writeValueAsString(message));
+        } catch (Exception e) {
+            log.warn("Error serializing chamber update for WebSocket broadcast: {}", e.getMessage());
+        }
+    }
+
+    private void broadcastJson(String jsonPayload) {
+        TextMessage message = new TextMessage(jsonPayload);
+        for (WebSocketSession session : sessions) {
+            if (session.isOpen()) {
+                try {
+                    session.sendMessage(message);
+                } catch (IOException e) {
+                    log.warn("Failed to send WebSocket message to session {}: {}", session.getId(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private void sendToSession(WebSocketSession session, String jsonPayload) throws IOException {
+        if (session.isOpen()) {
+            session.sendMessage(new TextMessage(jsonPayload));
         }
     }
 }

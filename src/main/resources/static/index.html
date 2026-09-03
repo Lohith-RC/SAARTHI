@@ -4,11 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SAARTHI | 3D Autonomous Agro-Intelligence System</title>
-  <meta name="description" content="Minimalist, edge-docked 3D spatial interface for indoor and darkroom agronomy. Powered by Java 21 LTS + Spring Boot 3.x + Google Gemini 3.6 Flash.">
+  <meta name="description" content="Minimalist, edge-docked 3D spatial interface for indoor and darkroom agronomy. Powered by Java 21 LTS + Spring Boot 3.x + Google Gemini 3.8 Flash.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="firstrun.css">
   <!-- Three.js + OrbitControls -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -69,6 +70,11 @@
             <span class="env-dot"></span>
             <span id="envModeLabel">🟡 TESTBENCH SIMULATION</span>
           </div>
+        </div>
+        <!-- FLEET CHAMBER SELECTOR -->
+        <div class="chamber-fleet-selector" title="Switch between fleet chambers / live nodes">
+          <span class="chamber-selector-icon">🌐</span>
+          <select id="chamberSelect" class="chamber-select" onchange="onChamberSelectChange()" aria-label="Active chamber"></select>
         </div>
       </div>
 
@@ -134,12 +140,12 @@
       </div>
 
       <!-- LIVE TELEMETRY SLIDERS (MANUAL OVERRIDE RIG) -->
-      <div class="control-section">
-        <span class="control-label">TELEMETRY SIMULATION RIG</span>
+      <div class="control-section" id="simRig">
+        <span class="control-label" data-tip="Try it: drag a slider to push live telemetry into the chamber and watch the HUD react">TELEMETRY SIMULATION RIG</span>
         
         <div class="slider-group">
           <div class="slider-head">
-            <span>CO2 Concentration:</span>
+            <span data-tip="CO2: carbon dioxide level in the air, measured in parts per million (ppm)">CO2 Concentration:</span>
             <strong id="sliderCO2Val" class="text-neon">845 ppm</strong>
           </div>
           <input type="range" id="sliderCO2" min="400" max="2000" value="845" oninput="onSliderChange('co2', this.value)">
@@ -147,7 +153,7 @@
 
         <div class="slider-group">
           <div class="slider-head">
-            <span>Relative Humidity:</span>
+            <span data-tip="Relative humidity: water vapor in the air, shown as a percent">Relative Humidity:</span>
             <strong id="sliderRHVal" class="text-cyan">92 %</strong>
           </div>
           <input type="range" id="sliderRH" min="40" max="100" value="92" oninput="onSliderChange('rh', this.value)">
@@ -155,7 +161,7 @@
 
         <div class="slider-group">
           <div class="slider-head">
-            <span>Chamber Temperature:</span>
+            <span data-tip="Chamber temperature in degrees Celsius">Chamber Temperature:</span>
             <strong id="sliderTempVal" class="text-amber">22.4 °C</strong>
           </div>
           <input type="range" id="sliderTemp" min="10" max="40" step="0.5" value="22.4" oninput="onSliderChange('temp', this.value)">
@@ -164,7 +170,7 @@
 
       <!-- SIMULATION PRESETS -->
       <div class="quick-sim-buttons">
-        <button class="btn-danger-sim" onclick="simulateBreathSpike()" title="Simulate rapid CO2 breath test spike (Key: S)">💨 Simulate Breath Spike [S]</button>
+        <button class="btn-danger-sim" data-tip="Simulates a sudden CO2 spike so you can watch the alert and fan response live" onclick="simulateBreathSpike()" title="Simulate rapid CO2 breath test spike (Key: S)">💨 Simulate Breath Spike [S]</button>
         <button class="btn-reset-sim" onclick="resetToOptimal()" title="Reset baseline parameters (Key: R)">🔄 Reset to Optimal [R]</button>
       </div>
     </aside>
@@ -347,7 +353,7 @@
         <div class="metric-header-row">
           <div class="metric-icon" id="fanIcon3D">🌀</div>
           <div class="metric-data">
-            <span class="m-label">FAE EXHAUST BLOWER</span>
+            <span class="m-label" data-tip="FAE: Fresh Air Exchange - the exhaust fan that pulls CO2-heavy air out of the chamber">FAE EXHAUST BLOWER</span>
             <div class="m-val-row">
               <span class="m-num" id="hudFanVal">1,420</span>
               <span class="m-unit">RPM (45%)</span>
@@ -366,7 +372,7 @@
             <path class="spark-area" id="sparkAreaFan" fill="url(#gradFan)"/>
             <path class="spark-line" id="sparkLineFan" stroke="#9D4EDD"/>
           </svg>
-          <span class="spark-trend" id="trendFan">45% DUTY</span>
+          <span class="spark-trend" id="trendFan" data-tip="Duty: how hard the fan is working, from 0 to 100% of full speed">45% DUTY</span>
         </div>
       </div>
 
@@ -418,6 +424,17 @@
             <input type="password" id="saarthiOperatorTokenInput" placeholder="Paste the SAARTHI operator token..." autocomplete="off">
           </div>
           <small class="form-hint">Provider API keys are configured server-side only and never stored in this browser.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="saarthiDeviceTokenInput">
+            <span>Device Token:</span>
+            <span class="link-get-key">🔌 Optional — Simulated Node Mode</span>
+          </label>
+          <div class="input-with-action">
+            <input type="password" id="saarthiDeviceTokenInput" placeholder="Paste the SAARTHI device token (optional)..." autocomplete="off">
+          </div>
+          <small class="form-hint">With a device token, the telemetry sliders push into the selected chamber as a live simulation node. Leave empty for read-only HUD.</small>
         </div>
 
         <div class="knowledge-base-badge">
@@ -590,6 +607,22 @@
   <!-- TOAST NOTIFICATION CONTAINER -->
   <div class="saarthi-toast-container" id="toastContainer"></div>
 
+    <!-- FIRST-RUN WELCOME CARD (quiet invite, shown once) -->
+  <div class="first-run-backdrop" id="firstRunBackdrop" style="display:none;">
+    <div class="first-run-welcome glass-card" role="dialog" aria-labelledby="firstRunTitle">
+      <button class="btn-tour-close" onclick="dismissFirstRun()" title="Close" aria-label="Close">X</button>
+      <div class="first-run-icon">SAARTHI</div>
+      <h3 class="first-run-title" id="firstRunTitle">Welcome, grower</h3>
+      <p class="first-run-desc">This is your chamber's digital twin. Drag the sliders on the left to run a live simulation, or take the 3-step guided tour to meet the panels.</p>
+      <div class="first-run-actions">
+        <button class="btn-first-run-try" onclick="tryControls()">Try the controls</button>
+        <button class="btn-first-run-tour" onclick="takeGuidedTour()">Take the 3-step tour</button>
+      </div>
+      <button class="first-run-skip" onclick="dismissFirstRun()">Just look around</button>
+    </div>
+  </div>
+
+  <script src="firstrun.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

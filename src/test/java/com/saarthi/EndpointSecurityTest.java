@@ -130,6 +130,70 @@ public class EndpointSecurityTest {
     }
 
     @Test
+    void fleetReadEndpointsArePublicAndNotFoundIsCorrect() throws Exception {
+        // Anonymous fleet reads are public (same sensitivity as /current)
+        mockMvc.perform(get("/api/v1/telemetry/chambers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].deviceId").exists());
+        mockMvc.perform(get("/api/v1/telemetry/history"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/telemetry/chambers/SAARTHI_001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deviceId").value("SAARTHI_001"));
+        // Unknown chamber -> 404 (not 401/403)
+        mockMvc.perform(get("/api/v1/telemetry/chambers/DOES_NOT_EXIST"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void memoryLogValidatesBoundsAndTypes() throws Exception {
+        // day out of range -> 400
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .header("X-Operator-Token", OPERATOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":0,\"type\":\"NOTE\",\"description\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .header("X-Operator-Token", OPERATOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":999,\"type\":\"NOTE\",\"description\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+        // non-numeric day -> 400 (no 500)
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .header("X-Operator-Token", OPERATOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":\"abc\",\"type\":\"NOTE\",\"description\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+        // oversized description -> 400
+        String longDesc = "x".repeat(501);
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .header("X-Operator-Token", OPERATOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":10,\"type\":\"NOTE\",\"description\":\"" + longDesc + "\"}"))
+                .andExpect(status().isBadRequest());
+        // valid entry -> 200
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .header("X-Operator-Token", OPERATOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":10,\"type\":\"OPERATOR_NOTE\",\"description\":\"All good\"}"))
+                .andExpect(status().isOk());
+        // anonymous -> 401
+        mockMvc.perform(post("/api/v1/ai/memory/log")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":10,\"type\":\"NOTE\",\"description\":\"x\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void alertHistoryEndpointIsOperatorOnly() throws Exception {
+        mockMvc.perform(get("/api/v1/alerts/history")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/alerts/history").header("X-Device-Token", DEVICE))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/alerts/history").header("X-Operator-Token", OPERATOR))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void unmatchedRoutesAreDenied() throws Exception {
         // authenticated-but-unauthorized route -> 403
         mockMvc.perform(get("/api/v1/unknown").header("X-Operator-Token", OPERATOR))

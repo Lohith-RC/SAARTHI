@@ -40,6 +40,9 @@ Thumbs.db
 *.log
 logs/
 
+# Freebuff tool state (local run docs, preview logs, project id)
+.freebuff/
+
 # Database Files
 data/
 *.mv.db

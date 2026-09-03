@@ -46,8 +46,25 @@
 
 ## 3. Sprint Milestone Schedule (Gantt Overview)
 
-* **Sprint 1 (Week 1-2):** Web Simulator & Speech HUD (Zero-Cost Prototype)
+* **Sprint 1 (Week 1-2):** Web Simulator & Speech HUD (Zero-Cost Prototype) ✅ **COMPLETED**
 * **Sprint 2 (Week 3-4):** ESP32 + MQ-135 Hardware Bench Rig Assembly
 * **Sprint 3 (Week 5-6):** 3-Tier Alert Escalation Engine (WhatsApp / IVR)
 * **Sprint 4 (Week 7-8):** Pilot Deployment in First 2 Mushroom Chambers
 * **Sprint 5 (Week 9-10):** Hackathon & Seed Grant Pitch Submissions
+
+---
+
+## 4. Engineering Progress Tracker
+
+| Milestone | Deliverable | Status |
+| :--- | :--- | :--- |
+| **M1.0** | Concept Finalization & Master Architecture | 🟢 COMPLETED |
+| **M1.1** | Pre-Code Documentation Suite (PRD, TDD, BOM) | 🟢 COMPLETED |
+| **M1.2** | Interactive 3D Web HUD & Voice Simulator (Three.js) | 🟢 COMPLETED |
+| **M1.3** | Java 21 + Spring Boot 3 Backend Telemetry Ingestion | 🟢 COMPLETED |
+| **M1.6** | Multi-Chamber Fleet Backend (per-chamber state, WebSocket fleet push, fleet REST) | 🟢 COMPLETED |
+| **M2.2** | Fleet-Enabled HUD (chamber selector + live node simulation) | 🟢 COMPLETED |
+| **M1.4** | ESP32 + MQ-135 + DHT22 Hardware Bench Rig | ⚪ Pending |
+| **M1.5** | Hackathon & Pitch Deck Asset Preparation | ⚪ Pending |
+| **M2.0** | Alpha Pilot Testing across 5 Grow Rooms | ⚪ Pending |
+| **M2.1** | 3-Tier Alert Escalation Engine (WhatsApp / IVR) | ⚪ Pending |

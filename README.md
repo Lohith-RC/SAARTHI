@@ -27,6 +27,18 @@ All project specifications, engineering blueprints, business models, and legal d
 
 ---
 
+## 🔧 Firmware
+
+Canonical ESP32 firmware: **`firmware/saarthi_esp32_firmware.ino`** (FreeRTOS
+dual-core: real-time sensor/relay failsafe on Core 1, Wi-Fi + HTTP telemetry on
+Core 0). Device identity and token are injected at build time:
+
+```
+platformio run -DSAARTHI_DEVICE_TOKEN='"my-secret"' -DSAARTHI_DEVICE_ID='"ESP32_NODE_02"'
+```
+
+---
+
 ## 🔒 Security & Environment Setup
 
 Copy `.env.example` to `.env` and insert your private API keys:
@@ -55,7 +67,39 @@ mvn spring-boot:run
 ```
 * **🌐 WebGL 3D HUD:** [http://localhost:8080](http://localhost:8080)
 * **📊 Live Telemetry API:** [http://localhost:8080/api/v1/telemetry/current](http://localhost:8080/api/v1/telemetry/current)
+* **🌐 Fleet Snapshot API:** [http://localhost:8080/api/v1/telemetry/chambers](http://localhost:8080/api/v1/telemetry/chambers)
 * **🗄️ H2 Database Console:** [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+
+---
+
+## 🚀 Multi-Chamber Fleet Demo (2-minute setup)
+
+SAARTHI runs a full **multi-chamber fleet**: every ESP32 node is its own
+chamber with independent crop recipes, watchdog, and alerting. The HUD has a
+fleet chamber selector in the top header.
+
+```bash
+# 1. Start the backend (with your tokens set)
+mvn spring-boot:run
+
+# 2. Simulate a 3-chamber fleet (mushroom + hydro mix)
+set SAARTHI_DEVICE_TOKEN=<your-device-token>
+python scripts/mock_esp32_node.py --nodes 3
+
+# 3. Open the HUD, enter the operator token in ⚡ AI Studio, and watch the
+#    🌐 chamber selector populate with live nodes. Switch chambers, trigger
+#    spikes, and check alerts.
+```
+
+**Key fleet endpoints:**
+| Endpoint | Description | Auth |
+| :--- | :--- | :--- |
+| `GET /api/v1/telemetry/chambers` | Full fleet snapshot | Public |
+| `GET /api/v1/telemetry/chambers/{deviceId}` | Single chamber | Public |
+| `GET /api/v1/telemetry/history?deviceId=...` | Per-chamber history | Public |
+| `POST /api/v1/actuate` | Actuate a specific chamber (`deviceId` optional) | Operator |
+| `GET /api/v1/alerts/history` | Persistent alert history | Operator |
+| `WS /ws/telemetry` | `FLEET_SNAPSHOT` + `CHAMBER_UPDATE` messages | Token |
 
 ---
 

@@ -60,6 +60,25 @@ sequenceDiagram
 
 ---
 
+## 2B. WebSocket Fleet Message Types (Additive & Backwards Compatible)
+
+The raw telemetry record broadcast is kept for the legacy default chamber. New
+fleet-aware HUD clients also receive typed messages:
+
+```json
+// 1. Full fleet snapshot, pushed once on WebSocket connect
+{ "type": "FLEET_SNAPSHOT", "chambers": [
+    { "deviceId": "SAARTHI_001", "co2Ppm": 845, "humidityRh": 92, "tempC": 22.4, "fanRpm": 1420, "fanDuty": 45, "cropType": "mushroom", "status": "OPTIMAL" },
+    { "deviceId": "ESP32_NODE_01", "co2Ppm": 880, "humidityRh": 90, "tempC": 22.6, "fanRpm": 1420, "fanDuty": 45, "cropType": "mushroom", "status": "OPTIMAL" }
+]}
+
+// 2. Single-chamber live update
+{ "type": "CHAMBER_UPDATE", "deviceId": "ESP32_NODE_01", "record": {
+    "deviceId": "ESP32_NODE_01", "co2Ppm": 1350, "humidityRh": 91, "tempC": 22.7,
+    "fanRpm": 2400, "fanDuty": 80, "cropType": "mushroom", "status": "WARNING"
+}}
+```
+
 ## 3. UI State Transitions & Visual Logic
 
 | State | Trigger Criteria | Primary HUD Color | 3D Lighting Effect | Audio Behavior |

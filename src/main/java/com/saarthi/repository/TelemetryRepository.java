@@ -16,6 +16,8 @@ import java.util.List;
 public interface TelemetryRepository extends JpaRepository<TelemetryRecord, Long> {
     
     List<TelemetryRecord> findTop50ByOrderByTimestampDesc();
+
+    List<TelemetryRecord> findTop50ByDeviceIdOrderByTimestampDesc(String deviceId);
     
     List<TelemetryRecord> findByDeviceIdOrderByTimestampDesc(String deviceId);
 

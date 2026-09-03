@@ -1,10 +1,13 @@
 package com.saarthi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.saarthi.model.AlertEvent;
+import com.saarthi.repository.AlertRepository;
 import com.saarthi.security.SecurityAuditLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -38,6 +41,7 @@ public class AlertService {
 
     private final ObjectMapper objectMapper;
     private final SecurityAuditLogger audit;
+    private final AlertRepository alertRepository;
     private final List<Map<String, Object>> alertHistory = new CopyOnWriteArrayList<>();
     private final Map<String, Long> lastAlertTimePerKey = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -45,8 +49,17 @@ public class AlertService {
             .build();
 
     public AlertService(ObjectMapper objectMapper, SecurityAuditLogger audit) {
+        this(objectMapper, audit, null);
+    }
+
+    /**
+     * @param alertRepository optional persistence; when null alerts remain in-memory only.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public AlertService(ObjectMapper objectMapper, SecurityAuditLogger audit, AlertRepository alertRepository) {
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.audit = audit;
+        this.alertRepository = alertRepository;
     }
 
     /**
@@ -71,11 +84,13 @@ public class AlertService {
         alert.put("timestamp", now);
         alert.put("details", details != null ? details : Map.of());
 
-        // Keep last 50 alerts in memory
+        // Keep last 50 alerts in memory (instant reads for the HUD)
         alertHistory.add(0, alert);
         if (alertHistory.size() > 50) {
             alertHistory.remove(alertHistory.size() - 1);
         }
+
+        persistAlert(alert);
 
         log.info("ALERT DISPATCHED level={} title={} message={}", level, title, message);
         audit.alertDispatched(level, title, "system");
@@ -200,6 +215,46 @@ public class AlertService {
                 log.warn("Failed to dispatch webhook alert: {}", e.getMessage());
             }
         });
+    }
+
+    /**
+     * Best-effort persistence: a storage outage must never block or fail alert
+     * dispatch, so failures are logged and swallowed.
+     */
+    private void persistAlert(Map<String, Object> alert) {
+        if (alertRepository == null) return;
+        try {
+            String detailsJson = null;
+            Object details = alert.get("details");
+            if (details != null) {
+                detailsJson = objectMapper.writeValueAsString(details);
+                if (detailsJson.length() > 2000) {
+                    detailsJson = detailsJson.substring(0, 2000);
+                }
+            }
+            String message = String.valueOf(alert.getOrDefault("message", ""));
+            if (message.length() > 2000) message = message.substring(0, 2000);
+
+            alertRepository.save(new AlertEvent(
+                    String.valueOf(alert.get("key")),
+                    String.valueOf(alert.get("level")),
+                    String.valueOf(alert.get("title")),
+                    message,
+                    detailsJson,
+                    ((Number) alert.get("timestamp")).longValue()
+            ));
+        } catch (Exception e) {
+            log.warn("Alert persistence skipped (storage unavailable): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Persistent alert history from the database (most recent first).
+     */
+    public List<AlertEvent> getAlertHistory(int limit) {
+        if (alertRepository == null) return List.of();
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        return alertRepository.findAllByOrderByTimestampDesc(PageRequest.of(0, safeLimit));
     }
 
     public List<Map<String, Object>> getRecentAlerts() {

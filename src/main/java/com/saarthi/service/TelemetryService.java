@@ -5,51 +5,66 @@ import com.saarthi.model.CropRecipe;
 import com.saarthi.model.TelemetryRecord;
 import com.saarthi.repository.TelemetryRepository;
 import com.saarthi.websocket.TelemetryWebSocketHandler;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Core Telemetry Service managing live in-memory state, threshold evaluation,
- * WebSocket broadcasting, high-performance batch database persistence, and the 60-second Dead-Man's Watchdog.
+ * Core Telemetry Service managing the multi-chamber fleet: live per-chamber
+ * state, threshold evaluation, WebSocket broadcasting, high-performance batch
+ * database persistence, timed actuation, and the per-chamber Dead-Man's Watchdog.
+ *
+ * <p>The default chamber {@value #DEFAULT_DEVICE_ID} is always seeded so legacy
+ * single-chamber clients and endpoints keep their exact behavior.</p>
  */
 @Service
 public class TelemetryService {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryService.class);
 
+    /** Legacy default chamber, always present so single-chamber behavior is preserved. */
+    public static final String DEFAULT_DEVICE_ID = "SAARTHI_001";
+
+    /** Hard fleet cap: guards against unbounded chamber creation (memory DoS). */
+    private static final int MAX_CHAMBERS = 64;
+
     private final TelemetryRepository telemetryRepository;
     private final TelemetryWebSocketHandler webSocketHandler;
     private final AlertService alertService;
+    private final long watchdogTimeoutSeconds;
 
     // High-Throughput In-Memory Write Buffer (eliminates single-row synchronous disk locks)
     private final ConcurrentLinkedQueue<TelemetryRecord> writeBuffer = new ConcurrentLinkedQueue<>();
     private final Map<String, CropRecipe> cropRecipeRegistry = new ConcurrentHashMap<>();
 
-    // Current In-Memory Chamber State
-    private volatile String currentDeviceId = "SAARTHI_001";
-    private volatile Double currentCo2 = 845.0;
-    private volatile Double currentRh = 92.0;
-    private volatile Double currentTemp = 22.4;
-    private volatile Integer currentFanRpm = 1420;
-    private volatile Integer currentFanDuty = 45;
-    private volatile String currentCropType = "mushroom"; // 'mushroom' or 'hydro'
-    private volatile String currentStatus = "OPTIMAL";
-    private volatile long lastHeartbeat = Instant.now().getEpochSecond();
+    // Multi-Chamber Fleet State (keyed by deviceId)
+    private final Map<String, ChamberState> chambers = new ConcurrentHashMap<>();
 
-    public TelemetryService(TelemetryRepository telemetryRepository, TelemetryWebSocketHandler webSocketHandler, AlertService alertService) {
+    private static final int MAX_BUFFER_CAPACITY = 250;
+    private volatile boolean storageDegraded = false;
+
+    @Autowired
+    public TelemetryService(TelemetryRepository telemetryRepository,
+                            TelemetryWebSocketHandler webSocketHandler,
+                            AlertService alertService,
+                            @Value("${saarthi.watchdog.timeout-seconds:180}") long watchdogTimeoutSeconds) {
         this.telemetryRepository = telemetryRepository;
         this.webSocketHandler = webSocketHandler;
         this.alertService = alertService;
+        this.watchdogTimeoutSeconds = watchdogTimeoutSeconds;
 
         // Initialize Centralized Declarative Crop Recipes
         cropRecipeRegistry.put("mushroom", new CropRecipe(
@@ -64,34 +79,116 @@ public class TelemetryService {
                 45.0, 85.0, 16.0, 28.0,
                 1100, 2000
         ));
+
+        // Seed the legacy default chamber so single-chamber callers keep working.
+        chambers.put(DEFAULT_DEVICE_ID, new ChamberState(DEFAULT_DEVICE_ID, "mushroom"));
     }
 
-    private static final int MAX_BUFFER_CAPACITY = 250;
-    private volatile boolean storageDegraded = false;
-    private volatile Long actuationExpiryEpoch = null;
+    /**
+     * Convenience constructor for unit tests (uses the default 180s watchdog timeout).
+     */
+    public TelemetryService(TelemetryRepository telemetryRepository,
+                            TelemetryWebSocketHandler webSocketHandler,
+                            AlertService alertService) {
+        this(telemetryRepository, webSocketHandler, alertService, 180);
+    }
+
+    @PostConstruct
+    void wireFleetSnapshotSupplier() {
+        // No constructor this-escape: the handler only stores the reference and
+        // invokes it after the context is up (on WebSocket connect).
+        webSocketHandler.setFleetSnapshotSupplier(this::getFleetSnapshot);
+    }
+
+    // ------------------------------------------------------------------
+    // Chamber resolution & record conversion
+    // ------------------------------------------------------------------
 
     /**
-     * Ingests telemetry packet from hardware or simulation. Synchronized for atomic compound updates.
+     * Resolves (and lazily creates) the chamber for a deviceId. A null/blank id
+     * targets the default chamber; unknown ids beyond the fleet cap route to the
+     * default chamber instead of growing the map unboundedly.
+     */
+    private ChamberState resolveChamber(String deviceId) {
+        String id = normalizeDeviceId(deviceId);
+        ChamberState existing = chambers.get(id);
+        if (existing != null) return existing;
+        if (chambers.size() >= MAX_CHAMBERS) {
+            log.warn("[FLEET CAP] Chamber fleet at capacity ({}); routing {} to default chamber.", MAX_CHAMBERS, id);
+            return chambers.get(DEFAULT_DEVICE_ID);
+        }
+        ChamberState created = new ChamberState(id, "mushroom");
+        ChamberState raced = chambers.putIfAbsent(id, created);
+        return raced != null ? raced : created;
+    }
+
+    private String normalizeDeviceId(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) return DEFAULT_DEVICE_ID;
+        String trimmed = deviceId.trim();
+        if (trimmed.length() > 64 || !trimmed.matches("^[a-zA-Z0-9_\\-\\.]+$")) {
+            throw new IllegalArgumentException("deviceId must be alphanumeric (dashes/dots/underscores allowed, max 64 characters)");
+        }
+        return trimmed;
+    }
+
+    private CropRecipe recipeFor(String cropType) {
+        return cropRecipeRegistry.getOrDefault(cropType == null ? "" : cropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+    }
+
+    private static int dutyFor(int rpm) {
+        return (int) Math.min(100, Math.max(0, (rpm / 3000.0) * 100));
+    }
+
+    private static TelemetryRecord toRecord(ChamberState chamber) {
+        return new TelemetryRecord(
+                chamber.deviceId,
+                chamber.co2Ppm,
+                chamber.humidityRh,
+                chamber.tempC,
+                chamber.fanRpm,
+                chamber.fanDuty,
+                chamber.cropType,
+                chamber.status
+        );
+    }
+
+    private void broadcastFor(ChamberState chamber, TelemetryRecord record) {
+        // Backwards-compatible raw record for the default chamber (legacy HUDs),
+        // plus the typed fleet message for every chamber.
+        if (DEFAULT_DEVICE_ID.equals(chamber.deviceId)) {
+            webSocketHandler.broadcastTelemetry(record);
+        }
+        webSocketHandler.broadcastChamberUpdate(chamber.deviceId, record);
+    }
+
+    // ------------------------------------------------------------------
+    // Telemetry ingestion
+    // ------------------------------------------------------------------
+
+    /**
+     * Ingests telemetry packet from hardware or simulation. Synchronized for
+     * atomic compound updates across the fleet.
      */
     public synchronized TelemetryRecord ingestTelemetry(String deviceId, Double co2, Double rh, Double temp, Integer fanRpm, String crop) {
-        this.currentDeviceId = deviceId != null ? deviceId : this.currentDeviceId;
-        if (co2 != null) this.currentCo2 = co2;
-        if (rh != null) this.currentRh = rh;
-        if (temp != null) this.currentTemp = temp;
+        ChamberState chamber = resolveChamber(deviceId);
+        chamber.lastHeartbeat = Instant.now().getEpochSecond();
+        if (co2 != null) chamber.co2Ppm = co2;
+        if (rh != null) chamber.humidityRh = rh;
+        if (temp != null) chamber.tempC = temp;
         if (fanRpm != null) {
-            this.currentFanRpm = fanRpm;
-            this.currentFanDuty = (int) Math.min(100, Math.max(0, (fanRpm / 3000.0) * 100));
+            chamber.fanRpm = fanRpm;
+            chamber.fanDuty = dutyFor(fanRpm);
         }
-        if (crop != null) this.currentCropType = crop;
-        this.lastHeartbeat = Instant.now().getEpochSecond();
+        if (crop != null && !crop.isBlank()) chamber.cropType = crop.toLowerCase();
 
         // Anomaly & Threshold Evaluation
-        evaluateThresholds();
+        evaluateThresholds(chamber);
+        chamber.dirty = true;
 
-        TelemetryRecord record = getCurrentStateRecord();
-        
+        TelemetryRecord record = toRecord(chamber);
+
         // Broadcast immediately to WebSocket clients (zero latency)
-        webSocketHandler.broadcastTelemetry(record);
+        broadcastFor(chamber, record);
 
         // Bounded writeBuffer (protect heap during sustained DB failure)
         if (writeBuffer.size() >= MAX_BUFFER_CAPACITY) {
@@ -138,19 +235,23 @@ public class TelemetryService {
     }
 
     /**
-     * Checks if timed actuation has expired and auto-releases back to nominal baseline.
+     * Checks timed actuations across all chambers; auto-releases expired ones
+     * back to their nominal baseline.
      */
     @Scheduled(fixedRate = 1000)
     public synchronized void checkActuationExpiry() {
-        if (actuationExpiryEpoch != null && Instant.now().getEpochSecond() >= actuationExpiryEpoch) {
-            log.info("Actuation duration expired. Auto-releasing fan to baseline nominal RPM.");
-            actuationExpiryEpoch = null;
-            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
-            this.currentFanRpm = recipe.getBaselineFanRpm();
-            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
-            evaluateThresholds();
-            TelemetryRecord record = getCurrentStateRecord();
-            webSocketHandler.broadcastTelemetry(record);
+        long now = Instant.now().getEpochSecond();
+        for (ChamberState chamber : chambers.values()) {
+            if (chamber.actuationExpiryEpoch != null && now >= chamber.actuationExpiryEpoch) {
+                log.info("Actuation duration expired for {}. Auto-releasing fan to baseline nominal RPM.", chamber.deviceId);
+                chamber.actuationExpiryEpoch = null;
+                CropRecipe recipe = recipeFor(chamber.cropType);
+                chamber.fanRpm = recipe.getBaselineFanRpm();
+                chamber.fanDuty = dutyFor(recipe.getBaselineFanRpm());
+                chamber.dirty = true;
+                evaluateThresholds(chamber);
+                broadcastFor(chamber, toRecord(chamber));
+            }
         }
     }
 
@@ -161,133 +262,185 @@ public class TelemetryService {
 
     /**
      * Evaluates metrics independently so concurrent anomalies (e.g. high CO2 AND low RH)
-     * are each alerted rather than masked by mutual exclusion.
+     * are each alerted rather than masked by mutual exclusion. Alert keys are
+     * suffixed with the chamber deviceId so rate limiting never suppresses a
+     * second chamber's alert within the same window.
      */
-    private void evaluateThresholds() {
-        CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
+    private void evaluateThresholds(ChamberState chamber) {
+        CropRecipe recipe = recipeFor(chamber.cropType);
         boolean warning = false;
         boolean critical = false;
 
         // 1. Independent CO2 Evaluation
-        if (currentCo2 != null && currentCo2 > recipe.getMaxCo2()) {
+        if (chamber.co2Ppm != null && chamber.co2Ppm > recipe.getMaxCo2()) {
             warning = true;
-            if (this.currentFanRpm < recipe.getPurgeFanRpm()) {
-                this.currentFanRpm = recipe.getPurgeFanRpm();
-                this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getPurgeFanRpm() / 3000.0) * 100));
+            if (chamber.fanRpm == null || chamber.fanRpm < recipe.getPurgeFanRpm()) {
+                chamber.fanRpm = recipe.getPurgeFanRpm();
+                chamber.fanDuty = dutyFor(chamber.fanRpm);
             }
-            if (currentCo2 >= recipe.getSpikeCo2Threshold()) {
+            if (chamber.co2Ppm >= recipe.getSpikeCo2Threshold()) {
                 critical = true;
-                alertService.triggerAlert("CO2_SPIKE_" + recipe.getCropId().toUpperCase(), "CRITICAL", "High CO2 Concentration",
-                        String.format("CO2 reached %.0f ppm in %s chamber. FAE blower ramped to %d RPM.", currentCo2, recipe.getName(), currentFanRpm),
-                        Map.of("co2", currentCo2, "rpm", currentFanRpm, "crop", currentCropType));
+                alertService.triggerAlert("CO2_SPIKE_" + recipe.getCropId().toUpperCase() + "_" + chamber.deviceId,
+                        "CRITICAL", "High CO2 Concentration",
+                        String.format("CO2 reached %.0f ppm in %s chamber (%s). FAE blower ramped to %d RPM.",
+                                chamber.co2Ppm, recipe.getName(), chamber.deviceId, chamber.fanRpm),
+                        Map.of("deviceId", chamber.deviceId, "co2", chamber.co2Ppm, "rpm", chamber.fanRpm, "crop", chamber.cropType));
             }
         }
 
         // 2. Independent Relative Humidity Evaluation
-        if (currentRh != null && currentRh < recipe.getMinRh()) {
+        if (chamber.humidityRh != null && chamber.humidityRh < recipe.getMinRh()) {
             warning = true;
-            alertService.triggerAlert("HUMIDITY_LOW_" + recipe.getCropId().toUpperCase(), "WARNING", "Low Relative Humidity",
-                    String.format("Humidity dropped to %.1f%% in %s chamber (below %.0f%%).", currentRh, recipe.getName(), recipe.getMinRh()),
-                    Map.of("rh", currentRh, "crop", currentCropType));
-        } else if (currentRh != null && currentRh > recipe.getMaxRh()) {
+            alertService.triggerAlert("HUMIDITY_LOW_" + recipe.getCropId().toUpperCase() + "_" + chamber.deviceId,
+                    "WARNING", "Low Relative Humidity",
+                    String.format("Humidity dropped to %.1f%% in %s chamber (%s) (below %.0f%%).",
+                            chamber.humidityRh, recipe.getName(), chamber.deviceId, recipe.getMinRh()),
+                    Map.of("deviceId", chamber.deviceId, "rh", chamber.humidityRh, "crop", chamber.cropType));
+        } else if (chamber.humidityRh != null && chamber.humidityRh > recipe.getMaxRh()) {
             warning = true;
         }
 
         // 3. Independent Temperature Evaluation
-        if (currentTemp != null && (currentTemp > recipe.getMaxTemp() || currentTemp < recipe.getMinTemp())) {
+        if (chamber.tempC != null && (chamber.tempC > recipe.getMaxTemp() || chamber.tempC < recipe.getMinTemp())) {
             warning = true;
         }
 
         if (critical) {
-            this.currentStatus = "CRITICAL";
+            chamber.status = "CRITICAL";
         } else if (warning) {
-            this.currentStatus = "WARNING";
+            chamber.status = "WARNING";
         } else {
-            this.currentStatus = "OPTIMAL";
+            chamber.status = "OPTIMAL";
         }
     }
 
+    // ------------------------------------------------------------------
+    // Read endpoints
+    // ------------------------------------------------------------------
+
+    /**
+     * Current state of the default chamber (legacy single-chamber contract).
+     */
     public synchronized TelemetryRecord getCurrentStateRecord() {
-        return new TelemetryRecord(
-                currentDeviceId,
-                currentCo2,
-                currentRh,
-                currentTemp,
-                currentFanRpm,
-                currentFanDuty,
-                currentCropType,
-                currentStatus
-        );
+        return toRecord(chambers.get(DEFAULT_DEVICE_ID));
     }
 
+    /**
+     * Current state of a specific chamber, or {@code null} when unknown.
+     */
+    public synchronized TelemetryRecord getChamberStateRecord(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) return getCurrentStateRecord();
+        ChamberState chamber = chambers.get(normalizeDeviceId(deviceId));
+        return chamber != null ? toRecord(chamber) : null;
+    }
+
+    /**
+     * Full fleet snapshot (all chambers, sorted by deviceId).
+     */
+    public synchronized List<TelemetryRecord> getFleetSnapshot() {
+        List<TelemetryRecord> snapshot = new ArrayList<>(chambers.size());
+        for (ChamberState chamber : chambers.values()) {
+            snapshot.add(toRecord(chamber));
+        }
+        snapshot.sort(Comparator.comparing(TelemetryRecord::getDeviceId));
+        return snapshot;
+    }
+
+    /**
+     * Recent persisted history (legacy: across all devices).
+     */
     public List<TelemetryRecord> getRecentHistory() {
         return telemetryRepository.findTop50ByOrderByTimestampDesc();
     }
 
     /**
-     * Executes manual or AI-driven actuation commands. Synchronized for atomic updates.
+     * Recent persisted history for a single chamber.
+     */
+    public List<TelemetryRecord> getRecentHistory(String deviceId) {
+        return telemetryRepository.findTop50ByDeviceIdOrderByTimestampDesc(normalizeDeviceId(deviceId));
+    }
+
+    // ------------------------------------------------------------------
+    // Actuation
+    // ------------------------------------------------------------------
+
+    /**
+     * Executes manual or AI-driven actuation commands against a chamber
+     * (defaults to {@value #DEFAULT_DEVICE_ID} for backwards compatibility).
+     * Synchronized for atomic updates.
      */
     public synchronized TelemetryRecord executeActuation(ActuationCommand command) {
         if (command == null || command.getAction() == null) return getCurrentStateRecord();
 
+        ChamberState chamber = resolveChamber(command.getDeviceId());
         String action = command.getAction().toUpperCase();
         if (command.getDurationSeconds() != null && command.getDurationSeconds() > 0) {
-            this.actuationExpiryEpoch = Instant.now().getEpochSecond() + command.getDurationSeconds();
+            chamber.actuationExpiryEpoch = Instant.now().getEpochSecond() + command.getDurationSeconds();
         } else if ("RELAY_OFF".equals(action)) {
-            this.actuationExpiryEpoch = null;
+            chamber.actuationExpiryEpoch = null;
         }
 
         if ("RELAY_ON".equals(action) || "VENTILATE".equals(action) || "SET_RPM".equals(action)) {
-            this.currentFanRpm = command.getRpm() != null ? command.getRpm() : 2400;
-            this.currentFanDuty = 80;
+            chamber.fanRpm = command.getRpm() != null ? command.getRpm() : 2400;
+            chamber.fanDuty = 80;
         } else if ("RELAY_OFF".equals(action)) {
-            this.currentFanRpm = 0;
-            this.currentFanDuty = 0;
+            chamber.fanRpm = 0;
+            chamber.fanDuty = 0;
         } else if ("SWITCH_CROP".equals(action)) {
-            this.currentCropType = "hydro".equalsIgnoreCase(command.getCrop()) ? "hydro" : "mushroom";
-            CropRecipe recipe = cropRecipeRegistry.getOrDefault(this.currentCropType, cropRecipeRegistry.get("mushroom"));
-            this.currentCo2 = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
-            this.currentRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
-            this.currentTemp = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
-            this.currentFanRpm = recipe.getBaselineFanRpm();
-            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
+            chamber.cropType = "hydro".equalsIgnoreCase(command.getCrop()) ? "hydro" : "mushroom";
+            CropRecipe recipe = recipeFor(chamber.cropType);
+            chamber.co2Ppm = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
+            chamber.humidityRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
+            chamber.tempC = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
+            chamber.fanRpm = recipe.getBaselineFanRpm();
+            chamber.fanDuty = dutyFor(recipe.getBaselineFanRpm());
         } else if ("SPIKE".equals(action)) {
-            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
-            this.currentCo2 = recipe.getSpikeCo2Threshold() + 120.0;
-            this.currentRh = Math.min(98.0, recipe.getMaxRh() + 2.0);
-            this.currentTemp = 23.2;
-            this.currentFanRpm = recipe.getPurgeFanRpm();
-            this.currentFanDuty = (int) Math.min(100, Math.max(0, (this.currentFanRpm / 3000.0) * 100));
+            CropRecipe recipe = recipeFor(chamber.cropType);
+            chamber.co2Ppm = recipe.getSpikeCo2Threshold() + 120.0;
+            chamber.humidityRh = Math.min(98.0, recipe.getMaxRh() + 2.0);
+            chamber.tempC = 23.2;
+            chamber.fanRpm = recipe.getPurgeFanRpm();
+            chamber.fanDuty = dutyFor(chamber.fanRpm);
         } else if ("RESET".equals(action)) {
-            CropRecipe recipe = cropRecipeRegistry.getOrDefault(currentCropType.toLowerCase(), cropRecipeRegistry.get("mushroom"));
-            this.currentCo2 = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
-            this.currentRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
-            this.currentTemp = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
-            this.currentFanRpm = recipe.getBaselineFanRpm();
-            this.currentFanDuty = (int) Math.min(100, Math.max(0, (recipe.getBaselineFanRpm() / 3000.0) * 100));
+            CropRecipe recipe = recipeFor(chamber.cropType);
+            chamber.co2Ppm = (recipe.getMinCo2() + recipe.getMaxCo2()) / 2.0;
+            chamber.humidityRh = (recipe.getMinRh() + recipe.getMaxRh()) / 2.0;
+            chamber.tempC = (recipe.getMinTemp() + recipe.getMaxTemp()) / 2.0;
+            chamber.fanRpm = recipe.getBaselineFanRpm();
+            chamber.fanDuty = dutyFor(recipe.getBaselineFanRpm());
         }
 
-        evaluateThresholds();
-        TelemetryRecord record = getCurrentStateRecord();
-        webSocketHandler.broadcastTelemetry(record);
+        chamber.dirty = true;
+        evaluateThresholds(chamber);
+        TelemetryRecord record = toRecord(chamber);
+        broadcastFor(chamber, record);
         telemetryRepository.save(record);
         return record;
     }
 
+    // ------------------------------------------------------------------
+    // Dead-Man's Watchdog & retention
+    // ------------------------------------------------------------------
+
     /**
-     * Dead-Man's Watchdog: Checks every 60 seconds if hardware pings are active.
+     * Dead-Man's Watchdog: checks every 60 seconds if hardware pings are active,
+     * independently per chamber. Heartbeat records are only persisted when a
+     * chamber's state actually changed since the previous run (no write spam).
      */
     @Scheduled(fixedRate = 60000)
-    public void runDeadMansWatchdog() {
-        long secondsSinceLastPing = Instant.now().getEpochSecond() - lastHeartbeat;
-        if (secondsSinceLastPing > 180) {
-            log.warn("[WATCHDOG ALERT] No telemetry ping from {} for {}s. Alert triggered.", currentDeviceId, secondsSinceLastPing);
-            alertService.triggerAlert("WATCHDOG_TIMEOUT", "WARNING", "Hardware Node Offline",
-                    String.format("No telemetry ping from node %s for %d seconds. Check Wi-Fi or power.", currentDeviceId, secondsSinceLastPing),
-                    Map.of("deviceId", currentDeviceId, "elapsedSeconds", secondsSinceLastPing));
-        } else {
-            // Heartbeat persistence
-            telemetryRepository.save(getCurrentStateRecord());
+    public synchronized void runDeadMansWatchdog() {
+        long now = Instant.now().getEpochSecond();
+        for (ChamberState chamber : chambers.values()) {
+            long secondsSinceLastPing = now - chamber.lastHeartbeat;
+            if (secondsSinceLastPing >= watchdogTimeoutSeconds) {
+                log.warn("[WATCHDOG ALERT] No telemetry ping from {} for {}s. Alert triggered.", chamber.deviceId, secondsSinceLastPing);
+                alertService.triggerAlert("WATCHDOG_TIMEOUT_" + chamber.deviceId, "WARNING", "Hardware Node Offline",
+                        String.format("No telemetry ping from node %s for %d seconds. Check Wi-Fi or power.", chamber.deviceId, secondsSinceLastPing),
+                        Map.of("deviceId", chamber.deviceId, "elapsedSeconds", secondsSinceLastPing));
+            } else if (chamber.dirty) {
+                telemetryRepository.save(toRecord(chamber));
+                chamber.dirty = false;
+            }
         }
     }
 
@@ -302,5 +455,29 @@ public class TelemetryService {
             log.info("[DATA RETENTION] Pruned {} historical records older than 7 days.", deleted);
         }
         return deleted;
+    }
+
+    /**
+     * Mutable per-chamber state holder. All field access happens under the
+     * service lock, so plain volatile fields are sufficient.
+     */
+    static final class ChamberState {
+        final String deviceId;
+        volatile Double co2Ppm = 845.0;
+        volatile Double humidityRh = 92.0;
+        volatile Double tempC = 22.4;
+        volatile Integer fanRpm = 1420;
+        volatile Integer fanDuty = 45;
+        volatile String cropType;
+        volatile String status = "OPTIMAL";
+        volatile long lastHeartbeat;
+        volatile Long actuationExpiryEpoch = null;
+        volatile boolean dirty = true;
+
+        ChamberState(String deviceId, String cropType) {
+            this.deviceId = deviceId;
+            this.cropType = (cropType != null && !cropType.isBlank()) ? cropType.toLowerCase() : "mushroom";
+            this.lastHeartbeat = Instant.now().getEpochSecond();
+        }
     }
 }

@@ -45,8 +45,16 @@ public class GeminiAiService {
     @Value("${saarthi.ai.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${saarthi.ai.gemini.default-model:gemini-3.6-flash}")
+    @Value("${saarthi.ai.gemini.default-model:gemini-3.8-flash}")
     private String geminiDefaultModel;
+
+    /** Comma-separated fallback chain tried when the requested/default Gemini model fails. */
+    @Value("${saarthi.ai.gemini.candidate-models:gemini-3.8-flash,gemini-3.6-flash,gemini-2.5-flash}")
+    private String geminiCandidateModels;
+
+    /** Comma-separated fallback chain tried when the requested/default Groq model fails. */
+    @Value("${saarthi.ai.groq.candidate-models:openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b}")
+    private String groqCandidateModels;
 
     @Value("${saarthi.ai.customer-api-keys-enabled:false}")
     private boolean customerApiKeysEnabled;
@@ -246,11 +254,14 @@ public class GeminiAiService {
     }
 
     private ChatResponse callGeminiApi(String userQuery, String systemPrompt, String apiKey, String model, boolean allowActuation) {
-        String targetModel = (model != null && model.startsWith("gemini-")) ? model : (geminiDefaultModel != null && !geminiDefaultModel.isBlank() ? geminiDefaultModel : "gemini-3.6-flash");
+        String targetModel = (model != null && model.startsWith("gemini-")) ? model : (geminiDefaultModel != null && !geminiDefaultModel.isBlank() ? geminiDefaultModel : "gemini-3.8-flash");
         List<String> candidateModels = new ArrayList<>();
         candidateModels.add(targetModel);
-        if (!targetModel.equals("gemini-2.0-flash")) {
-            candidateModels.add("gemini-2.0-flash");
+        for (String candidate : geminiCandidateModels.split(",")) {
+            String trimmed = candidate.trim();
+            if (!trimmed.isEmpty() && !candidateModels.contains(trimmed)) {
+                candidateModels.add(trimmed);
+            }
         }
 
         for (String activeModel : candidateModels) {
@@ -319,8 +330,11 @@ public class GeminiAiService {
 
         List<String> candidateGroqModels = new ArrayList<>();
         candidateGroqModels.add(activeModel);
-        if (!activeModel.equals("openai/gpt-oss-120b")) {
-            candidateGroqModels.add("openai/gpt-oss-120b");
+        for (String candidate : groqCandidateModels.split(",")) {
+            String trimmed = candidate.trim();
+            if (!trimmed.isEmpty() && !candidateGroqModels.contains(trimmed)) {
+                candidateGroqModels.add(trimmed);
+            }
         }
         String endpoint = "https://api.groq.com/openai/v1/chat/completions";
 

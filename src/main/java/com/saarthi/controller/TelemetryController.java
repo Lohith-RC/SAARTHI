@@ -79,11 +79,36 @@ public class TelemetryController {
     }
 
     /**
+     * Fleet snapshot: every chamber's live state.
+     * GET /api/v1/telemetry/chambers
+     */
+    @GetMapping("/chambers")
+    public ResponseEntity<List<TelemetryRecord>> getFleetSnapshot() {
+        return ResponseEntity.ok(telemetryService.getFleetSnapshot());
+    }
+
+    /**
+     * Single chamber live state.
+     * GET /api/v1/telemetry/chambers/{deviceId}
+     */
+    @GetMapping("/chambers/{deviceId}")
+    public ResponseEntity<TelemetryRecord> getChamberTelemetry(@PathVariable String deviceId) {
+        TelemetryRecord record = telemetryService.getChamberStateRecord(deviceId);
+        if (record == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(record);
+    }
+
+    /**
      * Historical telemetry logs for analytics.
-     * GET /api/v1/telemetry/history
+     * GET /api/v1/telemetry/history?deviceId=...
      */
     @GetMapping("/history")
-    public ResponseEntity<List<TelemetryRecord>> getTelemetryHistory() {
+    public ResponseEntity<List<TelemetryRecord>> getTelemetryHistory(@RequestParam(required = false) String deviceId) {
+        if (deviceId != null && !deviceId.isBlank()) {
+            return ResponseEntity.ok(telemetryService.getRecentHistory(deviceId));
+        }
         return ResponseEntity.ok(telemetryService.getRecentHistory());
     }
 

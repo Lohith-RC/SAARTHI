@@ -51,9 +51,10 @@ graph TD
 | **M1.0** | Concept Finalization & Master Architecture | Day 1 | 🟢 **COMPLETED** | All Founders |
 | **M1.1** | Pre-Code Documentation Suite (PRD, TDD, BOM) | Day 2 | 🟢 **COMPLETED** | Alex & Maya |
 | **M1.2** | Interactive 3D Web HUD & Voice Simulator (Three.js) | Week 1 | 🟢 **COMPLETED** | Alex |
-| **M1.3** | Java 21 + Spring Boot 3 Backend Telemetry Ingestion | Week 2 | 🟡 **IN PROGRESS** | Alex |
+| **M1.3** | Java 21 + Spring Boot 3 Backend Telemetry Ingestion | Week 2 | 🟢 **COMPLETED** | Alex |
 | **M1.4** | ESP32 + MQ-135 + DHT22 Hardware Bench Rig | Week 3 | ⚪ Pending | Alex |
 | **M1.5** | Hackathon & Pitch Deck Asset Preparation | Week 3 | ⚪ Pending | Maya |
+| **M1.6** | Multi-Chamber Fleet Backend (per-chamber state, WebSocket fleet push, fleet REST) | Week 3 | 🟢 **COMPLETED** | Alex |
 | **M2.0** | Alpha Pilot Testing across 5 Grow Rooms | Month 2 | ⚪ Pending | Maya |
 | **M2.1** | 3-Tier Alert Escalation Engine (WhatsApp / IVR) | Month 3 | ⚪ Pending | Alex |
 

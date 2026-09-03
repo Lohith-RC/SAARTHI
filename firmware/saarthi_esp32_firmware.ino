@@ -26,13 +26,18 @@
 const char* WIFI_SSID = "YOUR_GROW_ROOM_WIFI";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* SERVER_ENDPOINT = "http://192.168.1.100:8080/api/v1/telemetry/push";
-const char* DEVICE_ID = "ESP32_NODE_01";
 
-// Device token injected at build time via -DSAARTHI_DEVICE_TOKEN='"my-secret"'.
+// Device identity + token injected at build time, e.g.:
+//   platformio run -DSAARTHI_DEVICE_TOKEN='"my-secret"' -DSAARTHI_DEVICE_ID='"ESP32_NODE_02"'
+// or arduino-cli compile --build-property build.extra_flags=-DSAARTHI_DEVICE_TOKEN=\"my-secret\" -DSAARTHI_DEVICE_ID=\"ESP32_NODE_02\"
 // There is intentionally NO committed default; a missing token disables upload.
+#ifndef SAARTHI_DEVICE_ID
+#define SAARTHI_DEVICE_ID "ESP32_NODE_01"
+#endif
 #ifndef SAARTHI_DEVICE_TOKEN
 #define SAARTHI_DEVICE_TOKEN ""
 #endif
+const char* DEVICE_ID = SAARTHI_DEVICE_ID;
 const char* DEVICE_TOKEN = SAARTHI_DEVICE_TOKEN;
 
 // --- Hardware Pins ---

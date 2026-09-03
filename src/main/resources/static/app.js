@@ -22,6 +22,10 @@ const telemetry = {
   fanDuty: 45
 };
 
+// Fleet State (multi-chamber digital twin)
+const fleetChambers = {};          // deviceId -> TelemetryRecord
+let selectedChamber = 'SAARTHI_001';
+
 // Rolling History Buffers for Real-Time Sparklines (20 data points)
 const history = {
   co2: [830, 835, 840, 838, 842, 845, 840, 848, 846, 845, 843, 847, 850, 848, 845, 844, 846, 845, 845, 845],
@@ -36,7 +40,8 @@ const aiBrainConfig = {
   model: localStorage.getItem('saarthi_ai_model') || 'openai/gpt-oss-120b',
   voiceEngine: localStorage.getItem('saarthi_voice_engine') || 'elevenlabs',
   language: 'en-US',
-  operatorToken: sessionStorage.getItem('saarthi_operator_token') || ''
+  operatorToken: sessionStorage.getItem('saarthi_operator_token') || '',
+  deviceToken: sessionStorage.getItem('saarthi_device_token') || ''
 };
 
 // Attach X-Operator-Token to operator-gated API calls when one has been entered.
@@ -86,14 +91,17 @@ document.addEventListener('DOMContentLoaded', () => {
   initAvatarFaceCanvas();
   initKeyboardShortcuts();
   updateAllSparklines();
+  rebuildChamberSelector();
   animate3D();
 
-  // Auto-launch guided tour for first-time operators
+  // First-run experience: quiet welcome card (3-step tour only on request)
   setTimeout(() => {
-    if (!localStorage.getItem('saarthi_tour_completed')) {
-      startOnboardingTour(false);
+    if (!localStorage.getItem('saarthi_tour_completed') &&
+        !localStorage.getItem('saarthi_first_run_dismissed') &&
+        typeof showFirstRunWelcome === 'function') {
+      showFirstRunWelcome();
     }
-  }, 1200);
+  }, 900);
 });
 
 // 1. INITIALIZE THREE.JS 3D SCENE
@@ -391,8 +399,8 @@ function switchCropType(type) {
     speakSaarthi("Switched to Hydroponic Basil Container profile. Water nutrient loops engaged.");
   }
 
-  // Notify Spring Boot Backend
-  sendActuationToSpring('CROP_PROFILE', 'SWITCH_CROP', null, null, type);
+  // Notify Spring Boot Backend (targets the currently selected fleet chamber)
+  sendActuationToSpring('CROP_PROFILE', 'SWITCH_CROP', null, null, type, selectedChamber);
 }
 
 // 9. THERMAL / IR VISION MODE
@@ -889,7 +897,7 @@ function triggerAiVisionAnalysis() {
 
 function applyVisionRecommendation() {
   playTone(920, 'triangle', 0.15);
-  sendActuationToSpring('FAN_01', 'VENTILATE', 600, 2400, null);
+  sendActuationToSpring('FAN_01', 'VENTILATE', 600, 2400, null, selectedChamber);
   telemetry.fanRpm = 2400;
   syncHUD();
   closeVisionModal();
@@ -962,7 +970,7 @@ function initKeyboardShortcuts() {
 function emergencyStopFan() {
   playTone(150, 'sawtooth', 0.4);
   updateTelemetry(telemetry.co2, telemetry.rh, telemetry.temp, 0);
-  sendActuationToSpring('FAN_01', 'RELAY_OFF', null, 0, cropType);
+  sendActuationToSpring('FAN_01', 'RELAY_OFF', null, 0, cropType, selectedChamber);
   showToast('EMERGENCY OVERRIDE', 'Exhaust blower shut down immediately [X].', 'warning');
 }
 
@@ -971,7 +979,7 @@ function simulateBreathSpike() {
   playTone(220, 'sawtooth', 0.3);
   updateTelemetry(1520, 94, 23.2, 2800);
   speakSaarthi("Warning: Rapid CO2 breath spike detected at 1,520 ppm. Autonomous fresh air ventilation activated.");
-  sendActuationToSpring('SIMULATION', 'SPIKE', null, null, null);
+  sendActuationToSpring('SIMULATION', 'SPIKE', null, null, null, selectedChamber);
   showToast('Climate Anomaly', 'CO2 spiked to 1,520 ppm. FAE ventilation auto-ramped.', 'warning');
 }
 
@@ -979,7 +987,7 @@ function resetToOptimal() {
   playTone(440, 'sine', 0.1);
   updateTelemetry(845, 92, 22.4, 1420);
   speakSaarthi("Chamber parameters normalized to baseline. Systems optimal.");
-  sendActuationToSpring('SIMULATION', 'RESET', null, null, null);
+  sendActuationToSpring('SIMULATION', 'RESET', null, null, null, selectedChamber);
   showToast('Chamber Reset', 'Parameters returned to optimal baseline.', 'success');
 }
 
@@ -1021,19 +1029,32 @@ function initSpringWebSocket() {
 
     telemetrySocket.onmessage = (event) => {
       try {
-        const record = JSON.parse(event.data);
-        if (record && record.co2Ppm !== undefined) {
-          updateTelemetry(record.co2Ppm, record.humidityRh, record.tempC, record.fanRpm);
-          const badge = document.getElementById('envModeBadge');
-          const badgeLabel = document.getElementById('envModeLabel');
-          if (badge && badgeLabel) {
-            if (record.deviceId && record.deviceId.startsWith('ESP32')) {
-              badge.className = 'env-mode-badge live';
-              badgeLabel.textContent = `🟢 LIVE NODE (${record.deviceId})`;
-            } else {
-              badge.className = 'env-mode-badge simulated';
-              badgeLabel.textContent = '🟡 TESTBENCH SIMULATION';
-            }
+        const msg = JSON.parse(event.data);
+
+        // Typed fleet message: full snapshot pushed once on connect
+        if (msg && msg.type === 'FLEET_SNAPSHOT' && Array.isArray(msg.chambers)) {
+          msg.chambers.forEach(rec => { if (rec && rec.deviceId) fleetChambers[rec.deviceId] = rec; });
+          rebuildChamberSelector();
+          const rec = fleetChambers[selectedChamber] || fleetChambers['SAARTHI_001'];
+          if (rec) applyRecordToHUD(rec, true);
+          return;
+        }
+
+        // Typed fleet message: single chamber update
+        if (msg && msg.type === 'CHAMBER_UPDATE' && msg.deviceId) {
+          fleetChambers[msg.deviceId] = msg.record;
+          if (msg.deviceId === selectedChamber) {
+            applyRecordToHUD(msg.record, true);
+          }
+          return;
+        }
+
+        // Legacy raw record (default chamber broadcast)
+        if (msg && msg.co2Ppm !== undefined) {
+          const deviceId = msg.deviceId || 'SAARTHI_001';
+          fleetChambers[deviceId] = msg;
+          if (deviceId === selectedChamber) {
+            applyRecordToHUD(msg, true);
           }
         }
       } catch (e) {
@@ -1063,11 +1084,11 @@ function initSpringWebSocket() {
   }
 }
 
-function sendActuationToSpring(target, action, duration, rpm, crop) {
+function sendActuationToSpring(target, action, duration, rpm, crop, deviceId) {
   fetch(`${getApiBaseUrl()}/api/v1/actuate`, {
     method: 'POST',
     headers: getOperatorHeaders(),
-    body: JSON.stringify({ target, action, durationSeconds: duration, rpm, crop, reason: 'CLIENT_UI_ACTION' })
+    body: JSON.stringify({ target, action, durationSeconds: duration, rpm, crop, deviceId: deviceId || undefined, reason: 'CLIENT_UI_ACTION' })
   }).then(async (res) => {
     if (!res.ok) {
       showToast("Actuation Restricted", "Operator token required to actuate physical relays. Configure in Brain modal.", "error");
@@ -1075,6 +1096,91 @@ function sendActuationToSpring(target, action, duration, rpm, crop) {
   }).catch((err) => {
     console.warn("Actuation error:", err);
   });
+}
+
+// Apply a fleet record to the visible HUD (gauges, sliders, badge, 3D crop type)
+function applyRecordToHUD(record, force) {
+  if (!record) return;
+  if (record.cropType && record.cropType !== cropType) {
+    cropType = record.cropType;
+    build3DRacks();
+    updateProfileTabs();
+  }
+  updateTelemetry(record.co2Ppm, record.humidityRh, record.tempC, record.fanRpm);
+
+  const badge = document.getElementById('envModeBadge');
+  const badgeLabel = document.getElementById('envModeLabel');
+  if (badge && badgeLabel) {
+    if (record.deviceId && record.deviceId.startsWith('ESP32')) {
+      badge.className = 'env-mode-badge live';
+      badgeLabel.textContent = `🟢 LIVE NODE (${record.deviceId})`;
+    } else {
+      badge.className = 'env-mode-badge simulated';
+      badgeLabel.textContent = '🟡 TESTBENCH SIMULATION';
+    }
+  }
+}
+
+// Rebuild the fleet chamber <select> from the cached snapshot
+function rebuildChamberSelector() {
+  const sel = document.getElementById('chamberSelect');
+  if (!sel) return;
+
+  const ids = Object.keys(fleetChambers).sort();
+  sel.innerHTML = '';
+  if (ids.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = 'SAARTHI_001';
+    opt.textContent = 'SAARTHI_001 · Mushroom';
+    sel.appendChild(opt);
+    return;
+  }
+
+  ids.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    const rec = fleetChambers[id];
+    const cropLabel = rec && rec.cropType ? (rec.cropType === 'hydro' ? 'Hydro' : 'Mushroom') : '';
+    const statusIcon = rec && rec.status === 'CRITICAL' ? '🔴' : (rec && rec.status === 'WARNING' ? '🟡' : '🟢');
+    opt.textContent = `${statusIcon} ${id}${cropLabel ? ' · ' + cropLabel : ''}`;
+    sel.appendChild(opt);
+  });
+
+  if (fleetChambers[selectedChamber]) {
+    sel.value = selectedChamber;
+  } else if (ids.length > 0) {
+    selectedChamber = ids[0];
+    sel.value = selectedChamber;
+  }
+}
+
+function onChamberSelectChange() {
+  const sel = document.getElementById('chamberSelect');
+  if (sel && sel.value) selectChamber(sel.value);
+}
+
+// Switch the HUD to a different fleet chamber
+function selectChamber(deviceId) {
+  selectedChamber = deviceId;
+  const sel = document.getElementById('chamberSelect');
+  if (sel) sel.value = deviceId;
+  const rec = fleetChambers[deviceId];
+  if (rec) {
+    if (rec.cropType && rec.cropType !== cropType) {
+      cropType = rec.cropType;
+      build3DRacks();
+      updateProfileTabs();
+    }
+    applyRecordToHUD(rec, true);
+  }
+  showToast('Chamber Selected', `Now viewing ${deviceId}.`, 'info');
+}
+
+function updateProfileTabs() {
+  const tabMush = document.getElementById('tabMush');
+  const tabHydro = document.getElementById('tabHydro');
+  if (tabMush) tabMush.classList.toggle('active', cropType === 'mushroom');
+  if (tabHydro) tabHydro.classList.toggle('active', cropType === 'hydro');
 }
 
 function pushTelemetryToSpring() {
@@ -1088,7 +1194,7 @@ function pushTelemetryToSpring() {
     method: 'POST',
     headers: headers,
     body: JSON.stringify({
-      deviceId: 'SAARTHI_WEB_HUD',
+      deviceId: selectedChamber || 'SAARTHI_WEB_HUD',
       co2Ppm: telemetry.co2,
       humidityRh: telemetry.rh,
       tempC: telemetry.temp,
@@ -1108,9 +1214,11 @@ function initBrainConfig() {
   // API-key inputs are removed: provider keys live server-side only.
   const modelSelect = document.getElementById('aiProviderSelect');
   const voiceSelect = document.getElementById('voiceEngineSelect');
+  const devTokenInput = document.getElementById('saarthiDeviceTokenInput');
 
   if (modelSelect) modelSelect.value = aiBrainConfig.model;
   if (voiceSelect) voiceSelect.value = aiBrainConfig.voiceEngine;
+  if (devTokenInput) devTokenInput.value = aiBrainConfig.deviceToken;
 
   if (dot) dot.className = 'brain-dot connected';
   if (statusText) {
@@ -1144,9 +1252,13 @@ function closeBrainModalOnBackdrop(e) {
 
 function clearOperatorToken() {
   aiBrainConfig.operatorToken = '';
+  aiBrainConfig.deviceToken = '';
   sessionStorage.removeItem('saarthi_operator_token');
-  const input = document.getElementById('saarthiOperatorTokenInput');
-  if (input) input.value = '';
+  sessionStorage.removeItem('saarthi_device_token');
+  const opInput = document.getElementById('saarthiOperatorTokenInput');
+  const devInput = document.getElementById('saarthiDeviceTokenInput');
+  if (opInput) opInput.value = '';
+  if (devInput) devInput.value = '';
   initBrainConfig();
   const feedback = document.getElementById('testFeedbackBox');
   if (feedback) feedback.style.display = 'none';
@@ -1158,12 +1270,18 @@ function saveGeminiSettings() {
   const voiceEngine = document.getElementById('voiceEngineSelect').value;
   const tokenInput = document.getElementById('saarthiOperatorTokenInput');
   const token = (tokenInput && tokenInput.value.trim()) || aiBrainConfig.operatorToken;
+  const devTokenInput = document.getElementById('saarthiDeviceTokenInput');
+  const devToken = (devTokenInput && devTokenInput.value.trim()) || aiBrainConfig.deviceToken;
 
   aiBrainConfig.model = model;
   aiBrainConfig.voiceEngine = voiceEngine;
   if (token) {
     aiBrainConfig.operatorToken = token;
     sessionStorage.setItem('saarthi_operator_token', token);
+  }
+  if (devToken) {
+    aiBrainConfig.deviceToken = devToken;
+    sessionStorage.setItem('saarthi_device_token', devToken);
   }
 
   localStorage.setItem('saarthi_ai_model', model);
@@ -1173,7 +1291,11 @@ function saveGeminiSettings() {
   closeBrainModal();
   playTone(880, 'triangle', 0.15);
 
-  speakSaarthi(`AI Studio engaged with ${model.includes('deepseek') ? 'DeepSeek-R1 reasoning' : 'Gemini 2.0'} and ${voiceEngine === 'elevenlabs' ? 'ElevenLabs studio voice' : 'browser speech'}. Ready for agronomy operations.`);
+  const modelName = model.includes('gpt') ? 'GPT-OSS 120B'
+    : model.includes('qwen') ? 'Qwen 3.8'
+    : model.includes('gemini') ? 'Gemini'
+    : model;
+  speakSaarthi(`AI Studio engaged with ${modelName} and ${voiceEngine === 'elevenlabs' ? 'ElevenLabs studio voice' : 'browser speech'}. Ready for agronomy operations.`);
 }
 
 async function testGeminiConnection() {

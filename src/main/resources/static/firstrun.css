@@ -1,0 +1,160 @@
+.first-run-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 5, 10, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: firstRunFadeIn 0.35s ease;
+}
+
+.first-run-welcome {
+  position: relative;
+  max-width: 430px;
+  width: calc(100% - 2rem);
+  padding: 1.6rem 1.7rem 1.4rem;
+  text-align: center;
+  border: 1px solid rgba(0, 245, 160, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 245, 160, 0.08);
+}
+
+.first-run-welcome .btn-tour-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+}
+
+.first-run-title {
+  margin: 0.4rem 0 0.5rem;
+  font-size: 1.25rem;
+  color: var(--neon-emerald);
+}
+
+.first-run-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 1.1rem;
+}
+
+.first-run-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-first-run-try {
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  color: var(--neon-cyan);
+  border-radius: 24px;
+  padding: 0.55rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-first-run-try:hover {
+  background: rgba(0, 210, 255, 0.22);
+  border-color: var(--neon-cyan);
+}
+
+@keyframes firstRunFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Attention pulse for the "try the sliders" invite */
+.attention-pulse {
+  animation: attentionPulse 1.6s ease-in-out 3;
+  border-radius: 10px;
+}
+
+@keyframes attentionPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 160, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(0, 245, 160, 0.35), 0 0 26px rgba(0, 245, 160, 0.25); }
+}
+
+
+/* ---- Plain-language tooltips ---- */
+[data-tip] {
+  cursor: help;
+  border-bottom: 1px dotted rgba(0, 245, 160, 0.35);
+}
+
+.saarthi-tooltip {
+  position: fixed;
+  z-index: 12000;
+  max-width: 270px;
+  padding: 0.5rem 0.7rem;
+  background: rgba(8, 14, 22, 0.96);
+  border: 1px solid rgba(0, 245, 160, 0.35);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.saarthi-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---- Welcome card extras ---- */
+.first-run-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  color: var(--neon-emerald);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-shadow: 0 0 18px rgba(0, 245, 160, 0.45);
+}
+
+.btn-first-run-tour {
+  background: rgba(0, 245, 160, 0.1);
+  border: 1px solid rgba(0, 245, 160, 0.4);
+  color: var(--neon-emerald);
+  border-radius: 24px;
+  padding: 0.55rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-first-run-tour:hover {
+  background: rgba(0, 245, 160, 0.2);
+  border-color: var(--neon-emerald);
+}
+
+.first-run-skip {
+  display: block;
+  margin: 0.9rem auto 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-decoration: underline;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.first-run-skip:hover {
+  opacity: 1;
+  color: var(--neon-cyan);
+}

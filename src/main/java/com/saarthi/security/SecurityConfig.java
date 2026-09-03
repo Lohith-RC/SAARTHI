@@ -48,6 +48,8 @@ public class SecurityConfig {
                         "/css/**", "/js/**", "/assets/**", "/images/**", "/fonts/**", "/static/**"
                 ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/telemetry/current").permitAll()
+                // Public fleet read endpoints (same sensitivity as /current)
+                .requestMatchers(HttpMethod.GET, "/api/v1/telemetry/chambers", "/api/v1/telemetry/chambers/**", "/api/v1/telemetry/history").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/ai/status").permitAll()
                 .requestMatchers("/ws/telemetry").permitAll()
 

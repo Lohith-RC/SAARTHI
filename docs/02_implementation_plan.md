@@ -50,10 +50,13 @@
 * [x] Build interactive telemetry slider rig and breath spike anomaly simulator.
 
 ### Phase 2: Java Spring Boot Backend & MQTT Broker
-* [ ] Initialize Spring Boot 3.x project with `spring-boot-starter-websocket` and `spring-integration-mqtt`.
-* [ ] Implement `TelemetryWebSocketHandler` to broadcast real-time metrics to connected HUD clients.
-* [ ] Configure Spring Data JPA entity mapping for `ChamberTelemetry` and `GrowerAccount`.
-* [ ] Implement 60-second Dead-Man's Watchdog scheduler (`@Scheduled(fixedRate = 60000)`).
+* [x] Initialize Spring Boot 3.x project with `spring-boot-starter-websocket` (REST ingestion; MQTT/Paho planned).
+* [x] Implement `TelemetryWebSocketHandler` to broadcast real-time metrics to connected HUD clients (raw + `CHAMBER_UPDATE` + `FLEET_SNAPSHOT`).
+* [x] Configure Spring Data JPA entity mapping for `ChamberTelemetry` (multi-chamber fleet) and `AlertEvent`.
+* [x] Implement 60-second Dead-Man's Watchdog scheduler (`@Scheduled(fixedRate = 60000)`), per chamber.
+* [x] Multi-chamber fleet backend: per-chamber state, recipes, actuation expiry, and fleet REST/WS endpoints.
+* [x] Persistent alert history (Flyway V3 `alert_event`).
+* [ ] Spring Integration + Eclipse Paho MQTT broker ingestion (spotty Wi-Fi QoS 1).
 
 ### Phase 3: Hardware Firmware & Telemetry Bridge
 * [ ] Wire MQ-135 to GPIO 34 (ADC1) and DHT22 to GPIO 4.

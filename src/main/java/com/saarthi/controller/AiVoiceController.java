@@ -60,16 +60,40 @@ public class AiVoiceController {
     /**
      * POST /api/v1/ai/memory/log
      * Appends a new milestone to the persistent crop lifecycle ledger.
+     * Field values are validated and bounded before persistence.
      */
     @PostMapping("/memory/log")
     public ResponseEntity<?> logCropLifecycleEvent(@RequestBody Map<String, Object> eventData) {
-        int day = ((Number) eventData.getOrDefault("day", 1)).intValue();
-        String type = (String) eventData.getOrDefault("type", "MANUAL_LOG");
-        String desc = (String) eventData.getOrDefault("description", "Operator logged note");
-        String status = (String) eventData.getOrDefault("healthStatus", "OPTIMAL");
+        int day = parseDay(eventData.get("day"));
+        String type = boundedString(eventData.get("type"), "MANUAL_LOG", 64, "type");
+        String desc = boundedString(eventData.get("description"), "Operator logged note", 500, "description");
+        String status = boundedString(eventData.get("healthStatus"), "OPTIMAL", 32, "healthStatus");
 
         aiService.addLifecycleEvent(day, type, desc, status);
         return ResponseEntity.ok(Map.of("success", true, "message", "Milestone recorded in OpenJarvis ledger"));
+    }
+
+    private static int parseDay(Object value) {
+        if (value == null) return 1;
+        try {
+            int day = value instanceof Number n ? n.intValue() : Integer.parseInt(value.toString().trim());
+            if (day < 1 || day > 365) {
+                throw new IllegalArgumentException("day must be between 1 and 365");
+            }
+            return day;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("day must be a valid integer");
+        }
+    }
+
+    private static String boundedString(Object value, String fallback, int maxLen, String field) {
+        if (value == null) return fallback;
+        String s = value.toString().trim();
+        if (s.isEmpty()) return fallback;
+        if (s.length() > maxLen) {
+            throw new IllegalArgumentException(field + " cannot exceed " + maxLen + " characters");
+        }
+        return s;
     }
 
     /**
@@ -121,14 +145,14 @@ public class AiVoiceController {
         return ResponseEntity.ok(Map.of(
                 "status", "ONLINE",
                 "engines", Map.of(
-                        "primaryReasoning", "Google Gemini 3.6 Flash",
-                        "deepReasoning", "Groq DeepSeek-R1 Distill 70B",
+                        "primaryReasoning", "Google Gemini 3.8 Flash",
+                        "deepReasoning", "Groq GPT-OSS 120B",
                         "localEdgeReasoning", "OpenJarvis / Local Ollama (Phi-4-Mini / Llama 3.2)",
                         "voiceSynthesis", "ElevenLabs AI Audio + Browser Web Speech",
                         "visionGeneration", "Pollinations AI / Flux"
                 ),
                 "grounding", "OpenJarvis Persistent Crop Ledger + Live IoT Telemetry",
-                "supportedModels", new String[]{"gemini-3.6-flash", "deepseek-r1-distill-llama-70b", "openjarvis-phi4-mini", "llama-3.3-70b-versatile"}
+                "supportedModels", new String[]{"gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "openjarvis-phi4-mini"}
         ));
     }
 }

@@ -28,6 +28,8 @@ public class ActuationCommand {
 
     @Size(max = 32)
     private String crop;   // 'mushroom' or 'hydro'
+    @Size(max = 64, message = "deviceId cannot exceed 64 characters")
+    private String deviceId; // target chamber (defaults to SAARTHI_001 when null)
     private String reason;
 
     public ActuationCommand() {}
@@ -54,6 +56,9 @@ public class ActuationCommand {
 
     public String getCrop() { return crop; }
     public void setCrop(String crop) { this.crop = crop; }
+
+    public String getDeviceId() { return deviceId; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }
