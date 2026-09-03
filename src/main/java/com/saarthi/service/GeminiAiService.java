@@ -161,8 +161,12 @@ public class GeminiAiService {
         TelemetryRecord current = telemetryService.getCurrentStateRecord();
         String systemPrompt = buildSystemGroundingPrompt(current);
 
-        // 1. Check if user selected OpenJarvis / Local Edge model
-        if (requestedModel != null && (requestedModel.contains("openjarvis") || requestedModel.contains("ollama") || requestedModel.contains("local"))) {
+        // TIER 1: Prioritize fastest available LPU inference (Groq ~280ms TTFT)
+        // Unless caller explicitly requested Gemini or Local Edge
+        boolean prefersGemini = requestedModel != null && requestedModel.toLowerCase().startsWith("gemini");
+        boolean prefersLocal = requestedModel != null && (requestedModel.contains("openjarvis") || requestedModel.contains("ollama") || requestedModel.contains("local"));
+
+        if (prefersLocal) {
             ChatResponse localJarvisResp = callOpenJarvisLocal(userQuery, systemPrompt, requestedModel, allowActuation);
             if (localJarvisResp != null && localJarvisResp.isSuccess()) {
                 recordConversationTurn(userQuery, localJarvisResp.getReplyText());
@@ -170,32 +174,34 @@ public class GeminiAiService {
             }
         }
 
-        // 2. Try Google Gemini API (Server-side key exclusively)
-        if (geminiApiKey != null && !geminiApiKey.isBlank() && geminiApiKey.length() > 10) {
-            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, geminiApiKey, requestedModel, allowActuation);
-            if (geminiResponse != null && geminiResponse.isSuccess()) {
-                recordConversationTurn(userQuery, geminiResponse.getReplyText());
-                return geminiResponse;
-            }
-        }
-
-        // 3. Try Groq (Server-side key exclusively)
-        if (groqApiKey != null && !groqApiKey.isBlank() && groqApiKey.length() > 10) {
+        // 1. FAST PATH: Groq LPU (Fastest generation: ~520 tokens/sec)
+        if (!prefersGemini && groqApiKey != null && !groqApiKey.isBlank() && groqApiKey.length() > 10) {
             ChatResponse groqResponse = callGroqApi(userQuery, systemPrompt, groqApiKey, requestedModel, allowActuation);
-            if (groqResponse != null && groqResponse.isSuccess()) {
+            if (groqResponse != null && groqResponse.isSuccess() && groqResponse.getReplyText() != null && groqResponse.getReplyText().trim().length() > 5) {
                 recordConversationTurn(userQuery, groqResponse.getReplyText());
                 return groqResponse;
             }
+            log.info("[FALLBACK TRIGGERED] Groq LPU unavailable or below quality threshold. Cascading to Tier 2 Gemini Flash.");
         }
 
-        // 4. Try Local OpenJarvis / Ollama fallback before static heuristics
+        // 2. TIER 2: Google Gemini Flash (High-Reasoning & Multi-turn Fallback)
+        if (geminiApiKey != null && !geminiApiKey.isBlank() && geminiApiKey.length() > 10) {
+            ChatResponse geminiResponse = callGeminiApi(userQuery, systemPrompt, geminiApiKey, requestedModel, allowActuation);
+            if (geminiResponse != null && geminiResponse.isSuccess() && geminiResponse.getReplyText() != null && geminiResponse.getReplyText().trim().length() > 5) {
+                recordConversationTurn(userQuery, geminiResponse.getReplyText());
+                return geminiResponse;
+            }
+            log.info("[FALLBACK TRIGGERED] Gemini Flash unavailable. Cascading to Tier 3 Edge Local Engine.");
+        }
+
+        // 3. TIER 3 (Edge Local Agent): Try Local OpenJarvis / Ollama
         ChatResponse localJarvisFallback = callOpenJarvisLocal(userQuery, systemPrompt, "llama3.2:3b", allowActuation);
         if (localJarvisFallback != null && localJarvisFallback.isSuccess()) {
             recordConversationTurn(userQuery, localJarvisFallback.getReplyText());
             return localJarvisFallback;
         }
 
-        // 5. Fallback to Dynamic Natural Agronomy Core
+        // 4. TIER 4 (Deterministic Zero-Latency Safety): In-Memory Agronomy Heuristics
         ChatResponse localResponse = processLocalAgronomyQuery(userQuery, allowActuation);
         recordConversationTurn(userQuery, localResponse.getReplyText());
         return localResponse;
@@ -365,7 +371,7 @@ public class GeminiAiService {
                         .uri(URI.create(endpoint))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + apiKey.trim())
-                        .timeout(Duration.ofSeconds(6))
+                        .timeout(Duration.ofSeconds(4))
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
 

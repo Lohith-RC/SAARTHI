@@ -293,6 +293,10 @@ function executeQuickPrompt(promptText) {
   processLiteQuery(cleanText);
 }
 
+const DEFAULT_OPERATOR_TOKEN = localStorage.getItem('saarthi_operator_token') || 
+                               sessionStorage.getItem('saarthi_operator_token') || 
+                               'KzgSIfXzuJQV53nx881zi8JDswrhD0azpAbcf0dNz072oJLX';
+
 async function processLiteQuery(queryText) {
   displayUserQuery(queryText);
   playTone(520, 'triangle', 0.08);
@@ -300,8 +304,15 @@ async function processLiteQuery(queryText) {
   try {
     const res = await fetch('/api/v1/ai/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: queryText })
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Operator-Token': DEFAULT_OPERATOR_TOKEN
+      },
+      body: JSON.stringify({ 
+        query: queryText,
+        model: 'openai/gpt-oss-120b',
+        language: 'en-US'
+      })
     });
 
     if (res.ok) {
@@ -333,7 +344,7 @@ async function processLiteQuery(queryText) {
 function displayUserQuery(text) {
   const speechText = document.getElementById('saarthiSpeechText');
   if (speechText) {
-    speechText.innerHTML = `<em>User asked: "${text}"</em><br><span style="color:#00D2FF;">Processing NLP reasoning...</span>`;
+    speechText.innerHTML = `<em>User asked: "${text}"</em><br><span style="color:#00D2FF;">Processing Groq NLP reasoning...</span>`;
   }
 }
 
@@ -351,7 +362,10 @@ async function speakSaarthiLite(text) {
 
     const res = await fetch('/api/v1/ai/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Operator-Token': DEFAULT_OPERATOR_TOKEN
+      },
       body: JSON.stringify({ text: text })
     });
 

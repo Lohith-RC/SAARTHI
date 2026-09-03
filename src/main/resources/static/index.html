@@ -3,626 +3,339 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAARTHI | 3D Autonomous Agro-Intelligence System</title>
-  <meta name="description" content="Minimalist, edge-docked 3D spatial interface for indoor and darkroom agronomy. Powered by Java 21 LTS + Spring Boot 3.x + Google Gemini 3.8 Flash.">
+  <title>SAARTHI | Autonomous Climate Intelligence Platform</title>
+  <meta name="description" content="Precision indoor agriculture and darkroom horticulture spatial operating system. Powered by Spring Boot 3 & Edge AI.">
+  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="firstrun.css">
-  <!-- Three.js + OrbitControls -->
+  
+  <!-- Three.js + OrbitControls for 3D Chamber Twin -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
-<body class="dark-theme">
+<body>
 
-  <!-- FULLSCREEN 3D VIEWPORT CANVAS (PRIMARY FOCAL POINT) -->
+  <!-- FULLSCREEN SPATIAL DIGITAL TWIN CANVAS -->
   <div id="canvas3d-container">
     <canvas id="webgl-canvas"></canvas>
   </div>
 
-  <!-- FLOATING CAMERA QUICK-CENTER ANCHOR -->
-  <button id="btnFloatCamReset" class="btn-floating-camera-reset" onclick="resetCameraHome()" title="Reset Camera to Home View [1]">
-    <span class="cam-icon">🎯</span>
-    <span>Center 3D View</span>
-  </button>
-
-  <!-- FOCUS MODE EXIT PILL -->
-  <div id="focusModeBanner" class="focus-mode-banner" onclick="toggleHudFocus()" style="display:none;" title="Click or Press [H] to Restore Full HUD">
-    <span>👁️ Immersion Mode Active • Click or Press [H] to Restore HUD</span>
+  <!-- FLOATING CAMERA PRESET CHIPS -->
+  <div class="camera-quick-presets" id="cameraPresets">
+    <button class="btn-cam-chip active" id="btnCamOrbit" onclick="setCameraView('orbit')">🔄 360° Orbit</button>
+    <button class="btn-cam-chip" id="btnCamTop" onclick="setCameraView('top')">📐 Top-Down</button>
+    <button class="btn-cam-chip" id="btnCamCanopy" onclick="setCameraView('canopy')">🔍 Canopy Focus</button>
+    <button class="btn-cam-chip" onclick="resetCameraHome()">🎯 Recenter</button>
   </div>
 
-  <!-- FLOATING EDGE DOCK TOGGLES ("FOCUS & FLOAT" PARADIGM) -->
-  <button id="btnToggleLeft" class="dock-toggle-btn dock-left" onclick="togglePanel('left')" title="Toggle 3D Controls (Key: [)">
-    <span class="dock-arrow">◀</span>
-    <span class="dock-label">3D INSPECTOR</span>
-  </button>
+  <!-- PRIMARY SHELL HUD OVERLAY -->
+  <div class="saarthi-app-shell" id="appShell">
 
-  <button id="btnToggleRight" class="dock-toggle-btn dock-right" onclick="togglePanel('right')" title="Toggle AI Copilot (Key: ])">
-    <span class="dock-label">AI COPILOT</span>
-    <span class="dock-arrow">▶</span>
-  </button>
-
-  <!-- FLOATING MINIMALIST HUD OVERLAY (EDGE-DOCKED) -->
-  <div class="hud-overlay-wrapper" id="hudOverlayWrapper">
-
-    <!-- TOP EDGE HEADER BAR -->
-    <header class="hud-header">
-      <div class="header-left">
-        <div class="brand-badge">
-          <div class="brand-glyph">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"></path><path d="m4.93 10.93 1.41 1.41"></path><path d="M2 18h2"></path><path d="M20 18h2"></path><path d="m19.07 10.93-1.41 1.41"></path><path d="M22 22H2"></path><path d="m8 22 4-10 4 10"></path></svg>
-          </div>
-          <div>
-            <div class="brand-title">SAARTHI <span class="version-tag">SPATIAL-OS</span></div>
-            <div class="brand-sub">Autonomous Climate Intelligence Engine</div>
-          </div>
+    <!-- TOP BAR: BRAND & FLEET OVERVIEW -->
+    <header class="top-bar">
+      
+      <!-- Brand & Loop Status -->
+      <div class="brand-group">
+        <div class="brand-icon">🌿</div>
+        <div>
+          <div class="brand-title">SAARTHI <span class="tag">SPATIAL-OS</span></div>
+        </div>
+        <div class="system-status-indicator" id="systemStatusBadge" title="Autonomous regulation loop active">
+          <span class="status-beacon"></span>
+          <span id="systemStatusText">AUTONOMOUS LOOP</span>
         </div>
       </div>
 
-      <div class="header-center">
-        <div class="header-status-cluster">
-          <div class="status-capsule" id="masterStatusCapsule" title="Autonomous regulation loop monitoring climate parameters">
-            <span class="capsule-pulse"></span>
-            <span id="masterStatusText">AUTONOMOUS LOOP: <strong>ONLINE</strong></span>
-          </div>
-          <div class="env-mode-badge simulated" id="envModeBadge" title="Simulated Testbench: Local in-memory telemetry loop active (No live physical relays affected)">
-            <span class="env-dot"></span>
-            <span id="envModeLabel">🟡 TESTBENCH SIMULATION</span>
-          </div>
-        </div>
-        <!-- FLEET CHAMBER SELECTOR -->
-        <div class="chamber-fleet-selector" title="Switch between fleet chambers / live nodes">
-          <span class="chamber-selector-icon">🌐</span>
-          <select id="chamberSelect" class="chamber-select" onchange="onChamberSelectChange()" aria-label="Active chamber"></select>
-        </div>
+      <!-- Fleet Chamber Segmented Switcher -->
+      <nav class="fleet-segment-bar" id="fleetSegmentBar" aria-label="Fleet Chambers">
+        <!-- Dynamically rendered by app.js -->
+        <button class="fleet-pill active" onclick="selectChamber('SAARTHI_001')">
+          <span class="fleet-pill-dot"></span>
+          <span>Room 01 (Oyster)</span>
+        </button>
+      </nav>
+
+      <!-- Action Cluster -->
+      <div class="top-actions">
+        <button class="btn-pill" id="btnToggleThermal" onclick="toggleThermalMode()" title="Toggle Virtual IR Thermal Gradient Shader">
+          <span>🌡️ IR Thermal</span>
+        </button>
+        <button class="btn-pill" id="btnOpenVision" onclick="openVisionModal()" title="AI Crop Pathology Vision Scanner">
+          <span>🔬 Vision Scan</span>
+        </button>
+        <button class="btn-pill" id="btnOpenDrawer" onclick="toggleConversationDrawer()" title="View Agronomic Dialogue History">
+          <span>💬 Copilot Log</span>
+        </button>
+        <button class="btn-pill" id="btnOpenSettings" onclick="openSettingsModal()" title="System Configuration & Tokens">
+          <span>⚙️ Settings</span>
+        </button>
       </div>
 
-      <div class="header-right">
-        <div class="view-mode-group">
-          <button class="btn-mode btn-tour-trigger" id="btnStartTour" onclick="startOnboardingTour(true)" title="Start 3-Step Guided Walkthrough">
-            <span>❓ Quick Tour</span>
-          </button>
-          <button class="btn-mode btn-brain-status" id="btnBrainConfig" onclick="openBrainModal()" title="Configure AI Brain & Voice Engine">
-            <span class="brain-dot" id="brainDot"></span>
-            <span id="brainStatusText">⚡ AI: GPT-OSS 120B</span>
-          </button>
-          <button class="btn-mode" id="btnLedgerOpen" onclick="openLedgerModal()" title="Crop Lifecycle History & Milestone Ledger">🌱 Crop Timeline</button>
-          <a href="lite.html" class="btn-mode btn-lite-switch" style="text-decoration:none;" title="Switch to Minimalist AI Generator (Lite Mode)">⚡ Lite Mode</a>
-          <button class="btn-mode active" id="btnMode3D" onclick="setViewMode('normal')" title="Standard Bioluminescent Lighting (Key: 1)">🌐 3D Twin</button>
-          <button class="btn-mode" id="btnModeThermal" onclick="setViewMode('thermal')" title="Virtual IR Temperature Gradient Shader (Key: T)">🌡️ IR Thermal</button>
-          <button class="btn-mode" id="btnHudFocus" onclick="toggleHudFocus()" title="Full Immersion Focus Mode (Key: H)">👁️ Focus</button>
-          <button class="btn-mode" id="btnSoundToggle" onclick="toggleAudioFx()">🔊 SFX: ON</button>
-        </div>
-      </div>
     </header>
 
-    <!-- LEFT EDGE DOCK: 3D CONTROLS & CAMERA PRESETS -->
-    <aside class="panel-left glass-card" id="panelLeft">
-      <div class="panel-header">
-        <div class="title-row">
-          <span class="panel-icon">🕹️</span>
-          <h4>3D Chamber Inspector</h4>
-        </div>
-        <button class="btn-panel-minimize" onclick="togglePanel('left')" title="Collapse Panel">✕</button>
-      </div>
+    <!-- FLOATING COCKPIT DOCK (VITAL METRICS & AI CONSOLE) -->
+    <main class="floating-cockpit-dock">
 
-      <!-- CAMERA PERSPECTIVES -->
-      <div class="control-section">
-        <span class="control-label">SPATIAL PERSPECTIVE</span>
-        <div class="btn-grid-preset">
-          <button class="btn-preset active" id="camOrbit" onclick="setCameraView('orbit')">🔄 360° Orbit [1]</button>
-          <button class="btn-preset" id="camTop" onclick="setCameraView('top')">📐 Top-Down [2]</button>
-          <button class="btn-preset" id="camRack1" onclick="setCameraView('rack1')">🔍 Rack 1 (Mushrooms) [3]</button>
-          <button class="btn-preset" id="camHydro" onclick="setCameraView('hydro')">🌱 Hydro Tower [4]</button>
-        </div>
-      </div>
-
-      <!-- CHAMBER FACILITY PROFILE -->
-      <div class="control-section">
-        <span class="control-label">ACTIVE FACILITY PROFILE</span>
-        <div class="profile-tabs">
-          <button class="profile-tab active" id="tabMush" onclick="switchCropType('mushroom')">
-            <span class="icon">🍄</span>
-            <div>
-              <strong>Oyster Mushroom</strong>
-              <small>Fruiting Chamber • Day 14</small>
-            </div>
-          </button>
-          <button class="profile-tab" id="tabHydro" onclick="switchCropType('hydro')">
-            <span class="icon">🌿</span>
-            <div>
-              <strong>Hydroponic Basil</strong>
-              <small>NFT System • Day 22</small>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <!-- LIVE TELEMETRY SLIDERS (MANUAL OVERRIDE RIG) -->
-      <div class="control-section" id="simRig">
-        <span class="control-label" data-tip="Try it: drag a slider to push live telemetry into the chamber and watch the HUD react">TELEMETRY SIMULATION RIG</span>
+      <!-- Row 1: Real-Time Vital Telemetry Cards -->
+      <section class="telemetry-cards-grid" aria-label="Chamber Telemetry">
         
-        <div class="slider-group">
-          <div class="slider-head">
-            <span data-tip="CO2: carbon dioxide level in the air, measured in parts per million (ppm)">CO2 Concentration:</span>
-            <strong id="sliderCO2Val" class="text-neon">845 ppm</strong>
-          </div>
-          <input type="range" id="sliderCO2" min="400" max="2000" value="845" oninput="onSliderChange('co2', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-head">
-            <span data-tip="Relative humidity: water vapor in the air, shown as a percent">Relative Humidity:</span>
-            <strong id="sliderRHVal" class="text-cyan">92 %</strong>
-          </div>
-          <input type="range" id="sliderRH" min="40" max="100" value="92" oninput="onSliderChange('rh', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-head">
-            <span data-tip="Chamber temperature in degrees Celsius">Chamber Temperature:</span>
-            <strong id="sliderTempVal" class="text-amber">22.4 °C</strong>
-          </div>
-          <input type="range" id="sliderTemp" min="10" max="40" step="0.5" value="22.4" oninput="onSliderChange('temp', this.value)">
-        </div>
-      </div>
-
-      <!-- SIMULATION PRESETS -->
-      <div class="quick-sim-buttons">
-        <button class="btn-danger-sim" data-tip="Simulates a sudden CO2 spike so you can watch the alert and fan response live" onclick="simulateBreathSpike()" title="Simulate rapid CO2 breath test spike (Key: S)">💨 Simulate Breath Spike [S]</button>
-        <button class="btn-reset-sim" onclick="resetToOptimal()" title="Reset baseline parameters (Key: R)">🔄 Reset to Optimal [R]</button>
-      </div>
-    </aside>
-
-    <!-- RIGHT EDGE DOCK: SAARTHI AI HOLOGRAPHIC COPILOT & VOICE -->
-    <aside class="panel-right glass-card" id="panelRight">
-      <div class="panel-header">
-        <div class="title-with-pulse">
-          <span class="panel-icon">👁️</span>
-          <h4>Saarthi AI Hologram Core</h4>
-        </div>
-        <div class="panel-header-actions">
-          <div class="live-tag" id="aiLiveTag"><span class="dot-green" id="aiDot"></span> <span id="aiTagText">SPRING AI LIVE</span></div>
-          <button class="btn-panel-minimize" onclick="togglePanel('right')" title="Collapse Panel">✕</button>
-        </div>
-      </div>
-
-      <!-- INTERACTIVE HOLOGRAPHIC FACE AVATAR (EYES & LIP-SYNC MOUTH) -->
-      <div class="avatar-container" id="avatarContainer">
-        <canvas id="avatarFaceCanvas" width="240" height="170" class="avatar-face-canvas"></canvas>
-        <div class="avatar-hologram-scanline"></div>
-        <div class="avatar-mood-row">
-          <span class="avatar-emotion-badge helpful" id="avatarEmotionBadge">🟢 MOOD: HELPFUL</span>
-          <span class="avatar-state-label" id="orbStateLabel">AI IDLE</span>
-        </div>
-        <!-- Quick Emotion State Switcher -->
-        <div class="avatar-emotion-quickbar">
-          <button class="btn-emo-pill active" onclick="setAvatarEmotion('helpful')" title="Helpful State">🟢 Helpful</button>
-          <button class="btn-emo-pill" onclick="setAvatarEmotion('serious')" title="Alert / Serious State">🔴 Serious</button>
-          <button class="btn-emo-pill" onclick="setAvatarEmotion('thinking')" title="Deep Reasoning State">🔵 Thinking</button>
-          <button class="btn-emo-pill" onclick="setAvatarEmotion('happy')" title="Harvest / Success State">✨ Happy</button>
-        </div>
-      </div>
-
-      <!-- SPEECH TRANSCRIPT BOX -->
-      <div class="dialogue-box" id="dialogueBox">
-        <div class="dialogue-header">
-          <span class="ai-label" id="aiSpeakerLabel">SAARTHI (AGRONOMIST COPILOT):</span>
-          <span class="time-stamp" id="dialogueTime">12:00 PM</span>
-        </div>
-        <p class="dialogue-text" id="saarthiSpeechText">
-          "Welcome, Operator. Chamber 1 environment is stable. CO2 is 845 ppm and relative humidity is 92%. How can I assist your crop cycle today?"
-        </p>
-      </div>
-
-      <!-- LIVE MIC & HANDS-FREE WAKE-WORD BUTTONS -->
-      <div class="mic-controls-row">
-        <button class="btn-mic-listen" id="btnMicRecord" onclick="toggleRealMic()" title="Push to Talk Microphone (Key: M)">
-          <span class="mic-icon">🎙️</span>
-          <span id="btnMicText">Push to Talk [M]</span>
-        </button>
-        <button class="btn-wake-word-toggle" id="btnWakeWordToggle" onclick="toggleWakeWordMode()" title="Continuous Ambient Mode: Say 'Hey Saarthi' hands-free">
-          <span class="wake-icon" id="wakeIcon">👂</span>
-          <span id="wakeWordStatusText">Wake-Word: OFF</span>
-        </button>
-      </div>
-
-      <!-- TEXT QUERY INPUT BAR -->
-      <form class="text-query-form" onsubmit="handleTextSubmit(event)">
-        <input type="text" id="textPromptInput" placeholder="Ask agronomy query (e.g. disease, ventilation)..." autocomplete="off">
-        <button type="submit" class="btn-send-query" title="Send Query">➤</button>
-      </form>
-
-      <!-- VISION DIAGNOSTIC STUDIO LAUNCHER -->
-      <button class="btn-vision-launcher" onclick="openVisionModal()" title="Open Crop Vision Diagnostic Scanner">
-        <span>🔬 Crop Vision Diagnostic Studio</span>
-        <span class="vision-pulse-tag">AI SCAN</span>
-      </button>
-
-      <!-- QUICK INTENT CARDS -->
-      <div class="intent-cards-grid">
-        <button class="btn-intent" onclick="triggerVoiceIntent('status')">
-          <span class="intent-icon">📊</span>
-          <span>"How is Room 1 doing?"</span>
-        </button>
-        <button class="btn-intent" onclick="triggerVoiceIntent('disease')">
-          <span class="intent-icon">🍄</span>
-          <span>"Why green patches on bags?"</span>
-        </button>
-        <button class="btn-intent" onclick="triggerVoiceIntent('ventilate')">
-          <span class="intent-icon">💨</span>
-          <span>"Ventilate for 10 mins"</span>
-        </button>
-        <button class="btn-intent" onclick="triggerVoiceIntent('lettuce_tips')">
-          <span class="intent-icon">🌿</span>
-          <span>"Preventing tip burn in basil?"</span>
-        </button>
-      </div>
-    </aside>
-
-    <!-- BOTTOM EDGE DOCK: REAL-TIME TELEMETRY GAUGES & SVG SPARKLINES -->
-    <div class="panel-bottom-telemetry" id="panelBottom">
-      
-      <!-- CO2 CAPSULE -->
-      <div class="metric-capsule" id="capCO2">
-        <div class="metric-header-row">
-          <div class="metric-icon">💨</div>
-          <div class="metric-data">
-            <span class="m-label">CO2 GAS CONCENTRATION</span>
-            <div class="m-val-row">
-              <span class="m-num" id="hudCO2Val">845</span>
-              <span class="m-unit">ppm</span>
+        <!-- CO2 Vital Card -->
+        <div class="vital-card" id="cardCO2">
+          <div class="vital-header">
+            <div class="vital-label-group">
+              <span class="vital-icon">💨</span>
+              <span class="vital-label">Carbon Dioxide</span>
             </div>
+            <span class="vital-pill ok" id="valCO2Status">OPTIMAL</span>
           </div>
-          <div class="m-status-pill ok" id="hudCO2Status">OPTIMAL</div>
+          <div class="vital-reading-row">
+            <span class="vital-value" id="valCO2Num">845 <small style="font-size:0.8rem;color:var(--text-muted);">ppm</small></span>
+            <span class="vital-target-hint">Target &lt; 900</span>
+          </div>
+          <div class="vital-spark-wrapper">
+            <svg class="vital-spark-svg" id="sparkCO2Svg" viewBox="0 0 160 28" preserveAspectRatio="none">
+              <path class="spark-area" id="sparkAreaCO2" fill="#10B981" />
+              <path class="spark-line" id="sparkLineCO2" stroke="#10B981" />
+            </svg>
+          </div>
         </div>
-        <div class="sparkline-container">
-          <svg class="sparkline-svg" id="sparkCO2" viewBox="0 0 160 32" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="gradCO2" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#00F5A0" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="#00F5A0" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <path class="spark-area" id="sparkAreaCO2" fill="url(#gradCO2)"/>
-            <path class="spark-line" id="sparkLineCO2" stroke="#00F5A0"/>
-          </svg>
-          <span class="spark-trend" id="trendCO2">● STABLE</span>
-        </div>
-      </div>
 
-      <!-- HUMIDITY CAPSULE -->
-      <div class="metric-capsule" id="capRH">
-        <div class="metric-header-row">
-          <div class="metric-icon">💧</div>
-          <div class="metric-data">
-            <span class="m-label">RELATIVE HUMIDITY</span>
-            <div class="m-val-row">
-              <span class="m-num" id="hudRHVal">92</span>
-              <span class="m-unit">% RH</span>
+        <!-- Relative Humidity Vital Card -->
+        <div class="vital-card" id="cardRH">
+          <div class="vital-header">
+            <div class="vital-label-group">
+              <span class="vital-icon">💧</span>
+              <span class="vital-label">Relative Humidity</span>
             </div>
+            <span class="vital-pill ok" id="valRHStatus">OPTIMAL</span>
           </div>
-          <div class="m-status-pill ok" id="hudRHStatus">OPTIMAL</div>
+          <div class="vital-reading-row">
+            <span class="vital-value" id="valRHNum">92.0 <small style="font-size:0.8rem;color:var(--text-muted);">%</small></span>
+            <span class="vital-target-hint">Target 85 - 95%</span>
+          </div>
+          <div class="vital-spark-wrapper">
+            <svg class="vital-spark-svg" id="sparkRHSvg" viewBox="0 0 160 28" preserveAspectRatio="none">
+              <path class="spark-area" id="sparkAreaRH" fill="#38BDF8" />
+              <path class="spark-line" id="sparkLineRH" stroke="#38BDF8" />
+            </svg>
+          </div>
         </div>
-        <div class="sparkline-container">
-          <svg class="sparkline-svg" id="sparkRH" viewBox="0 0 160 32" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="gradRH" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#00D2FF" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="#00D2FF" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <path class="spark-area" id="sparkAreaRH" fill="url(#gradRH)"/>
-            <path class="spark-line" id="sparkLineRH" stroke="#00D2FF"/>
-          </svg>
-          <span class="spark-trend" id="trendRH">● STABLE</span>
-        </div>
-      </div>
 
-      <!-- TEMPERATURE CAPSULE -->
-      <div class="metric-capsule" id="capTemp">
-        <div class="metric-header-row">
-          <div class="metric-icon">🌡️</div>
-          <div class="metric-data">
-            <span class="m-label">CHAMBER TEMP</span>
-            <div class="m-val-row">
-              <span class="m-num" id="hudTempVal">22.4</span>
-              <span class="m-unit">°C</span>
+        <!-- Chamber Temperature Vital Card -->
+        <div class="vital-card" id="cardTemp">
+          <div class="vital-header">
+            <div class="vital-label-group">
+              <span class="vital-icon">🌡️</span>
+              <span class="vital-label">Temperature</span>
             </div>
+            <span class="vital-pill ok" id="valTempStatus">OPTIMAL</span>
           </div>
-          <div class="m-status-pill ok" id="hudTempStatus">OPTIMAL</div>
+          <div class="vital-reading-row">
+            <span class="vital-value" id="valTempNum">22.4 <small style="font-size:0.8rem;color:var(--text-muted);">°C</small></span>
+            <span class="vital-target-hint">Target 20 - 24°C</span>
+          </div>
+          <div class="vital-spark-wrapper">
+            <svg class="vital-spark-svg" id="sparkTempSvg" viewBox="0 0 160 28" preserveAspectRatio="none">
+              <path class="spark-area" id="sparkAreaTemp" fill="#F59E0B" />
+              <path class="spark-line" id="sparkLineTemp" stroke="#F59E0B" />
+            </svg>
+          </div>
         </div>
-        <div class="sparkline-container">
-          <svg class="sparkline-svg" id="sparkTemp" viewBox="0 0 160 32" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="gradTemp" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#FFB800" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="#FFB800" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <path class="spark-area" id="sparkAreaTemp" fill="url(#gradTemp)"/>
-            <path class="spark-line" id="sparkLineTemp" stroke="#FFB800"/>
-          </svg>
-          <span class="spark-trend" id="trendTemp">● STABLE</span>
-        </div>
-      </div>
 
-      <!-- EXHAUST BLOWER CAPSULE -->
-      <div class="metric-capsule" id="capFan">
-        <div class="metric-header-row">
-          <div class="metric-icon" id="fanIcon3D">🌀</div>
-          <div class="metric-data">
-            <span class="m-label" data-tip="FAE: Fresh Air Exchange - the exhaust fan that pulls CO2-heavy air out of the chamber">FAE EXHAUST BLOWER</span>
-            <div class="m-val-row">
-              <span class="m-num" id="hudFanVal">1,420</span>
-              <span class="m-unit">RPM (45%)</span>
+        <!-- Fresh Air Exchange Fan Vital Card -->
+        <div class="vital-card" id="cardFan">
+          <div class="vital-header">
+            <div class="vital-label-group">
+              <span class="vital-icon">🌀</span>
+              <span class="vital-label">Exhaust FAE Blower</span>
             </div>
+            <span class="vital-pill ok" id="valFanStatus">AUTO</span>
           </div>
-          <div class="m-status-pill ok" id="hudFanStatus">AUTO</div>
+          <div class="vital-reading-row">
+            <span class="vital-value" id="valFanNum">1,420 <small style="font-size:0.8rem;color:var(--text-muted);">RPM</small></span>
+            <span class="vital-target-hint" id="valFanDutyText">45% Duty</span>
+          </div>
+          <div class="vital-spark-wrapper">
+            <svg class="vital-spark-svg" id="sparkFanSvg" viewBox="0 0 160 28" preserveAspectRatio="none">
+              <path class="spark-area" id="sparkAreaFan" fill="#8B5CF6" />
+              <path class="spark-line" id="sparkLineFan" stroke="#8B5CF6" />
+            </svg>
+          </div>
         </div>
-        <div class="sparkline-container">
-          <svg class="sparkline-svg" id="sparkFan" viewBox="0 0 160 32" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="gradFan" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#9D4EDD" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="#9D4EDD" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <path class="spark-area" id="sparkAreaFan" fill="url(#gradFan)"/>
-            <path class="spark-line" id="sparkLineFan" stroke="#9D4EDD"/>
-          </svg>
-          <span class="spark-trend" id="trendFan" data-tip="Duty: how hard the fan is working, from 0 to 100% of full speed">45% DUTY</span>
-        </div>
-      </div>
 
-    </div>
+      </section>
+
+      <!-- Row 2: Integrated AI Agronomist Copilot Dock -->
+      <section class="copilot-action-dock" aria-label="Copilot Interface">
+        
+        <!-- Live AI State & Waveform -->
+        <div class="copilot-status-badge" id="copilotStatusBadge" onclick="toggleConversationDrawer()" title="Click to open Copilot conversation transcript">
+          <div class="waveform-cluster">
+            <span class="waveform-bar"></span>
+            <span class="waveform-bar"></span>
+            <span class="waveform-bar"></span>
+            <span class="waveform-bar"></span>
+          </div>
+          <span class="copilot-title-text" id="copilotStateText">AI COPILOT: IDLE</span>
+        </div>
+
+        <!-- Conversational Prompt Bar -->
+        <form class="copilot-form" onsubmit="handleQuerySubmit(event)">
+          <div class="copilot-input-wrapper">
+            <input 
+              type="text" 
+              id="copilotQueryInput" 
+              class="copilot-input" 
+              placeholder="Ask agronomic query or issue command (e.g. 'Ventilate for 10 minutes', 'Diagnose CO2 spike')..." 
+              autocomplete="off"
+            >
+            <button type="button" class="btn-mic-action" id="btnMicTalk" onclick="toggleVoiceInput()" title="Push to talk (Speech-to-Text)">
+              🎙️
+            </button>
+          </div>
+          <button type="submit" class="btn-submit-action" title="Send Directive">
+            Send ➤
+          </button>
+        </form>
+
+        <!-- Quick Directive Chips -->
+        <div class="quick-directive-chips">
+          <button class="btn-directive-chip" onclick="executeQuickDirective('status')">📊 Status Report</button>
+          <button class="btn-directive-chip" onclick="executeQuickDirective('ventilate')">💨 Purge Air (10m)</button>
+          <button class="btn-directive-chip" onclick="executeQuickDirective('disease')">🍄 Disease Check</button>
+        </div>
+
+      </section>
+
+    </main>
 
   </div>
 
-  <!-- AI BRAIN & VOICE STUDIO MODAL -->
-  <div class="modal-backdrop" id="brainModal" onclick="closeBrainModalOnBackdrop(event)">
-    <div class="modal-glass-container">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-icon-badge">⚡</span>
-          <div>
-            <h3>AI Brain & Voice Studio Settings</h3>
-            <span class="modal-sub">Enterprise Generative Engine & Voice Pipeline</span>
-          </div>
-        </div>
-        <button class="btn-close-modal" onclick="closeBrainModal()">✕</button>
+  <!-- SLIDE-OVER CONVERSATION TRANSCRIPT DRAWER -->
+  <aside class="conversation-drawer" id="conversationDrawer">
+    <div class="drawer-header">
+      <div class="modal-header-title">
+        <span>💬</span>
+        <span>Agronomic Copilot Transcript</span>
       </div>
-
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="aiProviderSelect">Active Reasoning Model:</label>
-            <select id="aiProviderSelect">
-              <option value="openai/gpt-oss-120b" selected>Groq: GPT-OSS 120B (Ultra-Fast & Accurate)</option>
-              <option value="qwen/qwen3.8-27b">Groq: Qwen 3.8 27B</option>
-              <option value="gemini-3.6-flash">Google: Gemini 3.6 Flash</option>
-              <option value="openjarvis-phi4-mini">OpenJarvis: Local Edge Agent (Ollama / Phi-4-Mini)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="voiceEngineSelect">Voice Synthesis Engine:</label>
-            <select id="voiceEngineSelect">
-              <option value="elevenlabs" selected>ElevenLabs (Hyper-Realistic Studio AI)</option>
-              <option value="browser">Browser Native (Zero-Latency Web Speech)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="saarthiOperatorTokenInput">
-            <span>Operator Token:</span>
-            <span class="link-get-key">🔐 Required for Chat, Voice & Control</span>
-          </label>
-          <div class="input-with-action">
-            <input type="password" id="saarthiOperatorTokenInput" placeholder="Paste the SAARTHI operator token..." autocomplete="off">
-          </div>
-          <small class="form-hint">Provider API keys are configured server-side only and never stored in this browser.</small>
-        </div>
-
-        <div class="form-group">
-          <label for="saarthiDeviceTokenInput">
-            <span>Device Token:</span>
-            <span class="link-get-key">🔌 Optional — Simulated Node Mode</span>
-          </label>
-          <div class="input-with-action">
-            <input type="password" id="saarthiDeviceTokenInput" placeholder="Paste the SAARTHI device token (optional)..." autocomplete="off">
-          </div>
-          <small class="form-hint">With a device token, the telemetry sliders push into the selected chamber as a live simulation node. Leave empty for read-only HUD.</small>
-        </div>
-
-        <div class="knowledge-base-badge">
-          <span class="icon">📖</span>
-          <div>
-            <strong>OpenJarvis Agentic Pipeline & Agronomy Grounding:</strong>
-            <p>Reasoning via <strong>Gemini 3.6 / OpenJarvis Local</strong> + Persistent <strong>Day 1-60 Memory Ledger</strong> + Multi-Step Tool Actuation.</p>
-          </div>
-        </div>
-
-        <div id="testFeedbackBox" class="test-feedback-box" style="display: none;">
-          <span id="testFeedbackIcon">⏳</span>
-          <span id="testFeedbackText">Validating connection with Spring AI Core...</span>
-        </div>
+      <button class="btn-close-dialog" onclick="toggleConversationDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="chatMessageList">
+      <div class="chat-bubble assistant">
+        <strong>Saarthi Copilot:</strong> Welcome, Operator. The autonomous regulation loop is monitoring Chamber 1. Environmental parameters are currently within optimal baselines.
       </div>
+    </div>
+  </aside>
 
-      <div class="modal-footer">
-        <button class="btn-modal-test" onclick="testGeminiConnection()">🧪 Test Multi-AI Pipeline</button>
-        <div class="footer-actions-right">
-          <button class="btn-modal-clear" onclick="clearOperatorToken()">Reset</button>
-          <button class="btn-modal-save" onclick="saveGeminiSettings()">Save & Engage Studio</button>
+  <!-- SETTINGS & SECURITY MODAL -->
+  <div class="modal-backdrop" id="settingsModal" style="display:none;" onclick="handleModalBackdropClick(event, 'settingsModal')">
+    <div class="modal-dialog-card">
+      <div class="modal-header-row">
+        <div class="modal-header-title">
+          <span>⚙️</span>
+          <span>System & Intelligence Settings</span>
         </div>
+        <button class="btn-close-dialog" onclick="closeSettingsModal()">✕</button>
+      </div>
+      <div class="modal-content-body">
+        
+        <div class="form-field-group">
+          <label class="form-field-label" for="settingModelSelect">Active Reasoning Core:</label>
+          <select class="form-field-select" id="settingModelSelect">
+            <option value="openai/gpt-oss-120b">Groq: GPT-OSS 120B (Ultra-Fast & Accurate)</option>
+            <option value="qwen/qwen3.8-27b">Groq: Qwen 3.8 27B</option>
+            <option value="gemini-3.6-flash">Google: Gemini 3.6 Flash</option>
+            <option value="openjarvis-phi4-mini">OpenJarvis: Local Edge Agent</option>
+          </select>
+        </div>
+
+        <div class="form-field-group">
+          <label class="form-field-label" for="settingVoiceSelect">Voice Synthesis Engine:</label>
+          <select class="form-field-select" id="settingVoiceSelect">
+            <option value="elevenlabs">ElevenLabs (Hyper-Realistic Studio AI)</option>
+            <option value="browser">Browser Native (Zero-Latency Web Speech)</option>
+          </select>
+        </div>
+
+        <div class="form-field-group">
+          <label class="form-field-label" for="settingTokenInput">Operator Security Token:</label>
+          <input type="password" class="form-field-input" id="settingTokenInput" placeholder="Paste SAARTHI operator token..." autocomplete="off">
+          <small style="color:var(--text-muted);font-size:0.72rem;">Required for chat actuation and remote chamber commands.</small>
+        </div>
+
+        <!-- Virtual Testbench Simulation Rig Toggle -->
+        <div style="background:rgba(245,158,11,0.06);border:1px dashed rgba(245,158,11,0.3);border-radius:10px;padding:0.85rem;margin-top:0.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem;">
+            <span style="font-family:var(--font-mono);font-size:0.75rem;font-weight:700;color:var(--amber);">🧪 Virtual Testbench Rig</span>
+            <button class="btn-directive-chip" onclick="simulateBreathSpike()">💨 Breath Spike [S]</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:0.4rem;">
+            <div style="display:flex;justify-content:space-between;font-size:0.75rem;font-family:var(--font-mono);">
+              <span>Simulate CO2:</span>
+              <strong id="testbenchCO2Val">845 ppm</strong>
+            </div>
+            <input type="range" min="400" max="2000" value="845" oninput="onTestbenchSlider('co2', this.value)" style="width:100%;">
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer-row">
+        <button class="btn-pill" onclick="closeSettingsModal()">Cancel</button>
+        <button class="btn-submit-action" onclick="saveSettings()">Save & Engage</button>
       </div>
     </div>
   </div>
 
-  <!-- OPENJARVIS CROP LIFECYCLE MEMORY LEDGER MODAL (GLASSMORPHISM) -->
-  <div class="modal-backdrop" id="ledgerModal" onclick="closeLedgerModalOnBackdrop(event)">
-    <div class="modal-glass-container vision-modal-container">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-icon-badge">🌱</span>
-          <div>
-            <h3>Crop Growth & Lifecycle Timeline</h3>
-            <span class="modal-sub">Continuous 60-Day Episodic Milestones & Agronomy Log</span>
-          </div>
+  <!-- VISION DIAGNOSTIC STUDIO MODAL -->
+  <div class="modal-backdrop" id="visionModal" style="display:none;" onclick="handleModalBackdropClick(event, 'visionModal')">
+    <div class="modal-dialog-card" style="max-width:680px;">
+      <div class="modal-header-row">
+        <div class="modal-header-title">
+          <span>🔬</span>
+          <span>Crop Pathology Vision Scanner</span>
         </div>
-        <button class="btn-close-modal" onclick="closeLedgerModal()">✕</button>
+        <button class="btn-close-dialog" onclick="closeVisionModal()">✕</button>
       </div>
-
-      <div class="modal-body">
-        <div class="ledger-timeline-container" id="ledgerTimelineList">
-          <!-- Populated dynamically via JS -->
-          <div class="timeline-loading">Loading persistent memory traces from Spring Boot...</div>
-        </div>
-
-        <div class="ledger-add-box">
-          <h5>➕ Append Milestone to OpenJarvis Ledger</h5>
-          <div class="form-row">
-            <div class="form-group" style="flex:1;">
-              <label>Crop Day:</label>
-              <input type="number" id="ledgerDayInput" value="19" min="1" max="60">
-            </div>
-            <div class="form-group" style="flex:2;">
-              <label>Milestone Type:</label>
-              <select id="ledgerTypeSelect">
-                <option value="FLUSH_HARVEST">Flush Harvest (Yield Log)</option>
-                <option value="HUMIDITY_OPTIMIZATION">Humidity Optimization</option>
-                <option value="PATHOGEN_ISOLATION">Pathogen Isolation</option>
-                <option value="OPERATOR_NOTE">Operator Field Note</option>
-              </select>
+      <div class="modal-content-body">
+        <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1rem;">
+          <div style="position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--surface-border-strong);background:#000;">
+            <img id="visionCropImage" src="https://image.pollinations.ai/prompt/oyster_mushroom_growing_on_darkroom_grow_rack_cinematic_neon?width=512&height=512&nologo=true" alt="Crop Scan View" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.7);padding:2px 8px;border-radius:4px;font-size:0.65rem;font-family:var(--font-mono);color:var(--emerald);">
+              ● LIVE CANOPY
             </div>
           </div>
-          <div class="form-group">
-            <label>Description / Observations:</label>
-            <input type="text" id="ledgerDescInput" placeholder="e.g. Harvested 14.8 kg first flush on Rack 1...">
-          </div>
-          <button class="btn-modal-save" onclick="submitLedgerEvent()">Record Memory Trace</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CROP VISION DIAGNOSTIC STUDIO MODAL (GLASSMORPHISM) -->
-  <div class="modal-backdrop" id="visionModal" onclick="closeVisionModalOnBackdrop(event)">
-    <div class="modal-glass-container vision-modal-container">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-icon-badge">🔬</span>
-          <div>
-            <h3>Crop Vision Diagnostic Studio</h3>
-            <span class="modal-sub">AI Multimodal Pathogen Scanner & Symptom Prescription Engine</span>
-          </div>
-        </div>
-        <button class="btn-close-modal" onclick="closeVisionModal()">✕</button>
-      </div>
-
-      <div class="modal-body vision-modal-body">
-        <div class="vision-grid-layout">
-          <!-- Live Scan Visualizer Card -->
-          <div class="vision-preview-card">
-            <div class="vision-scan-frame" id="visionScanFrame">
-              <img id="visionScanImage" src="https://image.pollinations.ai/prompt/oyster_mushroom_growing_on_darkroom_grow_rack_cinematic_neon?width=512&height=512&nologo=true" alt="Crop Scan View" class="vision-image">
-              <div class="vision-reticle-overlay">
-                <div class="reticle-corner tl"></div>
-                <div class="reticle-corner tr"></div>
-                <div class="reticle-corner bl"></div>
-                <div class="reticle-corner br"></div>
-                <div class="reticle-laser-line"></div>
-                <div class="reticle-target-box" id="reticleBox">
-                  <span class="target-label" id="targetLabel">ANALYZING CANOPY...</span>
-                </div>
-              </div>
-            </div>
-            <div class="vision-scan-status-row">
-              <span class="vision-scan-pill" id="visionConfidencePill">🎯 CONFIDENCE: 98.4%</span>
-              <span class="vision-model-pill">AI MULTIMODAL SCANNER</span>
-            </div>
-          </div>
-
-          <!-- Symptom & Remediation Plan -->
-          <div class="vision-diagnostic-details">
-            <h4 id="visionDiagnosisTitle">Oyster Mushroom (Pleurotus ostreatus) - Healthy Fruiting</h4>
-            <p class="vision-desc" id="visionDiagnosisDesc">
-              Cap morphology is convex with optimal margin expansion. Primordia clusters indicate balanced CO2 (&lt;850 ppm) and stable relative humidity (&gt;90%).
+          <div style="display:flex;flex-direction:column;gap:0.75rem;">
+            <h4 id="visionDiagnosisTitle" style="font-size:0.95rem;">Pleurotus ostreatus (Healthy Fruiting)</h4>
+            <p id="visionDiagnosisDesc" style="font-size:0.8rem;color:var(--text-secondary);line-height:1.4;">
+              Convex cap morphology with optimal margin expansion. Primordia clusters indicate balanced CO2 and humidity baselines.
             </p>
-
-            <div class="vision-remediation-box" id="visionRemediationBox">
-              <strong>🛠️ Actionable Agronomy Directive:</strong>
-              <p id="visionDirectiveText">Maintain current FAE blower duty at 45% (1,420 RPM). Schedule harvest in 18 to 24 hours.</p>
+            <div style="background:var(--surface-1);border:1px solid var(--surface-border);border-radius:8px;padding:0.75rem;">
+              <strong style="font-size:0.75rem;color:var(--sky);">🛠️ Actionable Directive:</strong>
+              <p id="visionDirectiveText" style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.25rem;">
+                Maintain current FAE blower duty at 45% (1,420 RPM). Schedule harvest in 18 to 24 hours.
+              </p>
             </div>
-
-            <!-- Quick Pathogen Simulation Selector -->
-            <div class="pathogen-selector-group">
-              <span class="pathogen-label">Simulate / Inspect Known Pathogens:</span>
-              <div class="pathogen-btn-row">
-                <button class="btn-pathogen active" onclick="runVisionScan('healthy')">🌱 Healthy Bed</button>
-                <button class="btn-pathogen" onclick="runVisionScan('trichoderma')">🟢 Trichoderma Mold</button>
-                <button class="btn-pathogen" onclick="runVisionScan('stipe')">🍄 CO2 Suffocation (Stipe)</button>
-                <button class="btn-pathogen" onclick="runVisionScan('tipburn')">🥬 Lettuce Tip Burn</button>
-              </div>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+              <button class="btn-directive-chip" onclick="simulatePathogen('healthy')">🌱 Healthy Bed</button>
+              <button class="btn-directive-chip" onclick="simulatePathogen('trichoderma')">🟢 Trichoderma</button>
+              <button class="btn-directive-chip" onclick="simulatePathogen('suffocation')">🍄 CO2 Stipe</button>
             </div>
           </div>
         </div>
       </div>
-
-      <div class="modal-footer">
-        <button class="btn-modal-test" onclick="triggerAiVisionAnalysis()">⚡ Re-Scan Canopy</button>
-        <button class="btn-modal-save" onclick="applyVisionRecommendation()">Execute Directive [ACTION]</button>
+      <div class="modal-footer-row">
+        <button class="btn-pill" onclick="closeVisionModal()">Dismiss</button>
+        <button class="btn-submit-action" onclick="executeVisionDirective()">Execute Directive</button>
       </div>
     </div>
   </div>
 
-  <!-- ONBOARDING SPOTLIGHT WALKTHROUGH MODAL -->
-  <div class="onboarding-overlay" id="onboardingOverlay" style="display:none;">
-    <div class="spotlight-backdrop" onclick="skipTour()"></div>
-    <div class="tour-card glass-card" id="tourCard">
-      <div class="tour-header">
-        <span class="tour-badge" id="tourStepBadge">STEP 1 OF 3</span>
-        <button class="btn-tour-close" onclick="skipTour()" title="Close Tour">✕</button>
-      </div>
-      <div class="tour-icon-row" id="tourIconRow">🌿</div>
-      <h3 class="tour-title" id="tourTitle">Welcome to Project SAARTHI</h3>
-      <p class="tour-desc" id="tourDesc">This is your 3D digital twin chamber. Orbit around your grow racks, monitor bioluminescent micro-climates, and inspect your canopy.</p>
-      <div class="tour-indicators">
-        <span class="tour-dot active" id="tourDot0"></span>
-        <span class="tour-dot" id="tourDot1"></span>
-        <span class="tour-dot" id="tourDot2"></span>
-      </div>
-      <div class="tour-footer">
-        <button class="btn-tour-secondary" onclick="skipTour()">Skip</button>
-        <div class="tour-btn-group">
-          <button class="btn-tour-prev" id="btnTourPrev" onclick="prevTourStep()" style="display:none;">← Back</button>
-          <button class="btn-tour-primary" id="btnTourNext" onclick="nextTourStep()">Next Step →</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- TOAST NOTIFICATION CLUSTER -->
+  <div class="saarthi-toast-cluster" id="toastCluster"></div>
 
-  <!-- TOAST NOTIFICATION CONTAINER -->
-  <div class="saarthi-toast-container" id="toastContainer"></div>
-
-    <!-- FIRST-RUN WELCOME CARD (quiet invite, shown once) -->
-  <div class="first-run-backdrop" id="firstRunBackdrop" style="display:none;">
-    <div class="first-run-welcome glass-card" role="dialog" aria-labelledby="firstRunTitle">
-      <button class="btn-tour-close" onclick="dismissFirstRun()" title="Close" aria-label="Close">X</button>
-      <div class="first-run-icon">SAARTHI</div>
-      <h3 class="first-run-title" id="firstRunTitle">Welcome, grower</h3>
-      <p class="first-run-desc">This is your chamber's digital twin. Drag the sliders on the left to run a live simulation, or take the 3-step guided tour to meet the panels.</p>
-      <div class="first-run-actions">
-        <button class="btn-first-run-try" onclick="tryControls()">Try the controls</button>
-        <button class="btn-first-run-tour" onclick="takeGuidedTour()">Take the 3-step tour</button>
-      </div>
-      <button class="first-run-skip" onclick="dismissFirstRun()">Just look around</button>
-    </div>
-  </div>
-
-  <script src="firstrun.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
