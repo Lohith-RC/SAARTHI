@@ -16,15 +16,16 @@
 
 | Platform | Role | Live URL | Status |
 | :--- | :--- | :--- | :--- |
-| **Render (Primary)** | Full-Stack Engine (Spring Boot + WebSockets + WebGL HUD) | **[https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)** | 🟢 Active / Live |
-| **Vercel** | Edge Static UI / Reverse Proxy | Configured via [`vercel.json`](./vercel.json) | 🟢 Deploy Ready |
+| **Vercel (Edge UI)** | Global Edge CDN + Reverse Proxy UI | **[https://project-saarthi-theta.vercel.app](https://project-saarthi-theta.vercel.app)** | 🟢 Live / Active |
+| **Render (Backend Engine)** | Full-Stack Engine (Spring Boot + WebSockets + SQLite/H2) | **[https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)** | 🟢 Live / Active |
 
 ### 🔗 Public Endpoints
-* **🖥️ WebGL 3D Spatial HUD:** [https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)
-* **📱 Low-Bandwidth Lite Mode:** [https://saarthi-backend-bvdl.onrender.com/lite.html](https://saarthi-backend-bvdl.onrender.com/lite.html)
-* **📊 Fleet Telemetry Snapshot:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers)
-* **⚡ Live Sensor Telemetry:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current)
-* **🔌 WebSocket Stream:** `wss://saarthi-backend-bvdl.onrender.com/ws/telemetry`
+* **🖥️ WebGL 3D Spatial HUD (Vercel):** [https://project-saarthi-theta.vercel.app](https://project-saarthi-theta.vercel.app)
+* **📱 Low-Bandwidth Lite Mode (Vercel):** [https://project-saarthi-theta.vercel.app/lite.html](https://project-saarthi-theta.vercel.app/lite.html)
+* **🖥️ Direct Backend HUD (Render):** [https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)
+* **📊 Multi-Chamber Fleet Snapshot API:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers)
+* **⚡ Live Sensor Telemetry API:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current)
+* **🔌 WebSocket Telemetry Stream:** `wss://saarthi-backend-bvdl.onrender.com/ws/telemetry`
 
 ---
 

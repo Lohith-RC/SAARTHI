@@ -1,0 +1,10 @@
+target/
+.git/
+.github/
+.freebuff/
+firmware/
+data/
+scripts/
+docs/
+*.bat
+*.jar
