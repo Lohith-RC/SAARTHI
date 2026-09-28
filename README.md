@@ -4,6 +4,54 @@
 
 > *"You grow the harvest. Saarthi steers the climate."*
 
+[![Render Deployment](https://img.shields.io/badge/Render-Live%20Service-46E3B7?logo=render&logoColor=white)](https://saarthi-backend-bvdl.onrender.com)
+[![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Vercel](https://img.shields.io/badge/Vercel-Compatible-000000?logo=vercel&logoColor=white)](https://vercel.com)
+
+---
+
+## 🌐 Live Cloud Deployments
+
+| Platform | Role | Live URL | Status |
+| :--- | :--- | :--- | :--- |
+| **Render (Primary)** | Full-Stack Engine (Spring Boot + WebSockets + WebGL HUD) | **[https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)** | 🟢 Active / Live |
+| **Vercel** | Edge Static UI / Reverse Proxy | Configured via [`vercel.json`](./vercel.json) | 🟢 Deploy Ready |
+
+### 🔗 Public Endpoints
+* **🖥️ WebGL 3D Spatial HUD:** [https://saarthi-backend-bvdl.onrender.com](https://saarthi-backend-bvdl.onrender.com)
+* **📱 Low-Bandwidth Lite Mode:** [https://saarthi-backend-bvdl.onrender.com/lite.html](https://saarthi-backend-bvdl.onrender.com/lite.html)
+* **📊 Fleet Telemetry Snapshot:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/chambers)
+* **⚡ Live Sensor Telemetry:** [https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current](https://saarthi-backend-bvdl.onrender.com/api/v1/telemetry/current)
+* **🔌 WebSocket Stream:** `wss://saarthi-backend-bvdl.onrender.com/ws/telemetry`
+
+---
+
+## 🚀 Deployment Guide
+
+### 1. Render Deployment (Automated via Docker)
+The repository contains an optimized multi-stage [Dockerfile](./Dockerfile) targeting Eclipse Temurin Java 21 JRE.
+1. Connect your GitHub repository (`Lohith-RC/SAARTHI`) in [Render Dashboard](https://dashboard.render.com).
+2. Choose **Web Service** with **Docker** runtime.
+3. Configure the following environment variables:
+   ```env
+   SERVER_PORT=8080
+   SERVER_ADDRESS=0.0.0.0
+   SAARTHI_CORS_ORIGINS=https://saarthi-backend-bvdl.onrender.com,http://localhost:8080
+   GEMINI_API_KEY=your_gemini_api_key
+   GROQ_API_KEY=your_groq_api_key
+   ELEVENLABS_API_KEY=your_elevenlabs_api_key
+   SPRING_DATASOURCE_URL=jdbc:postgresql://<supabase-host>:5432/<db>  # (Optional: falls back to embedded H2)
+   ```
+
+### 2. Vercel Deployment (Static Frontend + API Proxy)
+The repository includes a custom [`vercel.json`](./vercel.json) that serves the WebGL static UI directly from Vercel's Global Edge Network and routes `/api/*` and `/ws/*` calls to the live Render backend:
+```bash
+# Deploy with Vercel CLI
+npx vercel
+```
+
 ---
 
 ## 📁 Master Documentation Suite (`/docs`)
@@ -29,11 +77,9 @@ All project specifications, engineering blueprints, business models, and legal d
 
 ## 🔧 Firmware
 
-Canonical ESP32 firmware: **`firmware/saarthi_esp32_firmware.ino`** (FreeRTOS
-dual-core: real-time sensor/relay failsafe on Core 1, Wi-Fi + HTTP telemetry on
-Core 0). Device identity and token are injected at build time:
+Canonical ESP32 firmware: **`firmware/saarthi_esp32_firmware.ino`** (FreeRTOS dual-core: real-time sensor/relay failsafe on Core 1, Wi-Fi + HTTP telemetry on Core 0). Device identity and token are injected at build time:
 
-```
+```bash
 platformio run -DSAARTHI_DEVICE_TOKEN='"my-secret"' -DSAARTHI_DEVICE_ID='"ESP32_NODE_02"'
 ```
 
@@ -52,11 +98,13 @@ Your `.env` file is excluded in `.gitignore` and loaded securely by Spring Boot 
 GROQ_API_KEY=your_groq_api_key
 GEMINI_API_KEY=your_gemini_api_key
 ELEVENLABS_API_KEY=your_elevenlabs_api_key
+SAARTHI_DEVICE_TOKEN=your_device_token
+SAARTHI_OPERATOR_TOKEN=your_operator_token
 ```
 
 ---
 
-## 🏃 Running the Full-Stack Server
+## 🏃 Running Locally
 
 ```bash
 # 1-Click Launch (Windows)
@@ -68,18 +116,15 @@ mvn spring-boot:run
 * **🌐 WebGL 3D HUD:** [http://localhost:8080](http://localhost:8080)
 * **📊 Live Telemetry API:** [http://localhost:8080/api/v1/telemetry/current](http://localhost:8080/api/v1/telemetry/current)
 * **🌐 Fleet Snapshot API:** [http://localhost:8080/api/v1/telemetry/chambers](http://localhost:8080/api/v1/telemetry/chambers)
-* **🗄️ H2 Database Console:** [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
 
 ---
 
-## 🚀 Multi-Chamber Fleet Demo (2-minute setup)
+## 🚀 Multi-Chamber Fleet Simulation (2-minute setup)
 
-SAARTHI runs a full **multi-chamber fleet**: every ESP32 node is its own
-chamber with independent crop recipes, watchdog, and alerting. The HUD has a
-fleet chamber selector in the top header.
+SAARTHI runs a full **multi-chamber fleet**: every ESP32 node is its own chamber with independent crop recipes, watchdog, and alerting. The HUD has a fleet chamber selector in the top header.
 
 ```bash
-# 1. Start the backend (with your tokens set)
+# 1. Start the backend
 mvn spring-boot:run
 
 # 2. Simulate a 3-chamber fleet (mushroom + hydro mix)
@@ -87,8 +132,7 @@ set SAARTHI_DEVICE_TOKEN=<your-device-token>
 python scripts/mock_esp32_node.py --nodes 3
 
 # 3. Open the HUD, enter the operator token in ⚡ AI Studio, and watch the
-#    🌐 chamber selector populate with live nodes. Switch chambers, trigger
-#    spikes, and check alerts.
+#    chamber selector populate with live nodes.
 ```
 
 **Key fleet endpoints:**

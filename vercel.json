@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://saarthi-backend-bvdl.onrender.com/api/$1"
+    },
+    {
+      "source": "/ws/(.*)",
+      "destination": "https://saarthi-backend-bvdl.onrender.com/ws/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/src/main/resources/static/$1"
+    }
+  ]
+}
