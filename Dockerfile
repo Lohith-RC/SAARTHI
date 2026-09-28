@@ -39,5 +39,6 @@ EXPOSE 8080
 
 # Environment Defaults (Postgres datasource supplied via compose/.env)
 ENV SERVER_PORT=8080
+ENV SERVER_ADDRESS=0.0.0.0
 
 ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/saarthi-backend.jar"]
